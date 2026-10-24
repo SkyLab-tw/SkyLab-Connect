@@ -3,6 +3,7 @@ SkyLab Connect Windows x64 beta.19
 - 安裝檔不再內建任何學校的網址。第一次開啟時，首頁會請你輸入學校 SkyLab 平台的網址（就是平常用瀏覽器登入的網址），之後可以在「設定」修改。
 - 從舊版更新的北商使用者不用重新設定：舊版內建的 `https://skylab-tw.com`、`https://skylab.ntubimdbirc.tw` 與 `http://localhost:8000` 會自動改成 `https://ntub.skylab-tw.com`，更新後重新登入一次即可。自己填過的網址不受影響。
 - 網址可以只填網域（例如 `school.skylab-tw.com`），會自動補上 `https://`；從瀏覽器貼上完整網址也可以，只會保留網域部分。含帳號密碼的網址會被拒絕。
+- 背景連不上伺服器時，側欄會顯示「暫時連不上伺服器」並自動重試，恢復連線後提示會自己消失，不會一直跳錯誤訊息。
 - 自本版起由 [SkyLab-tw/SkyLab-Connect](https://github.com/SkyLab-tw/SkyLab-Connect) 發佈。
 
 `skylab-tw.com` 已改為 SkyLab 官網，beta.18 以前的版本因此無法登入。還沒更新的使用者，可以先到「設定」把後端網址改成 `https://ntub.skylab-tw.com`。
