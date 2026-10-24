@@ -40,6 +40,9 @@ export default {
     view: "表示形式",
     clearFilters: "絞り込みを解除",
     resourceError: "リソースを更新できません",
+    serverUnreachable: "サーバーに一時的に接続できません",
+    serverUnreachableHint:
+      "バックグラウンドで自動的に再試行しています。接続が回復するとこの表示は消えます。",
     appearance: "外観",
     dark: "ダーク",
     light: "ライト",

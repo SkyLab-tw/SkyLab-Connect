@@ -278,6 +278,21 @@
   margin-top: auto;
 }
 
+/* 背景輪詢連不上後端時的常駐提示，排在帳號狀態上方 */
+.desktop-offline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px 0;
+  color: var(--color-text-muted);
+  font-size: $font-size-14;
+
+  > .material-icons-outlined {
+    flex: none;
+    color: var(--color-danger);
+  }
+}
+
 .desktop-account {
   display: flex;
   align-items: center;

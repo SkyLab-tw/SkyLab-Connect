@@ -40,6 +40,8 @@
     view: "檢視方式",
     clearFilters: "清除篩選",
     resourceError: "無法更新資源",
+    serverUnreachable: "暫時連不上伺服器",
+    serverUnreachableHint: "會在背景自動重試，恢復連線後這個提示就會消失。",
     appearance: "外觀",
     dark: "深色",
     light: "淺色",

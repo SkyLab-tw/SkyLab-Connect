@@ -40,6 +40,9 @@
     view: "View",
     clearFilters: "Clear filters",
     resourceError: "Couldn't update resources",
+    serverUnreachable: "Server temporarily unreachable",
+    serverUnreachableHint:
+      "Retrying automatically in the background. This notice disappears once the connection is back.",
     appearance: "Appearance",
     dark: "Dark",
     light: "Light",

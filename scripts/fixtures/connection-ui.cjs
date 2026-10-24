@@ -74,6 +74,28 @@ app
       assert.notEqual(disconnected.title, normal.title);
       scenarios++;
 
+      // 背景輪詢連不上後端：側欄常駐「暫時連不上伺服器」，不跳錯誤訊息；下次成功就消失
+      const offline = () =>
+        win.webContents.executeJavaScript(`(()=>({
+        text:document.querySelector('.desktop-offline')?.lastElementChild.textContent.trim()||'',
+        toasts:document.querySelectorAll('.el-message').length
+      }))()`);
+      for (let poll = 0; poll < 3; poll++) {
+        await win.webContents.executeJavaScript(
+          "window.connectionTestReply('session/getSessionStatuses:hook',null,'B1017')"
+        );
+      }
+      await settle();
+      const unreachable = await offline();
+      assert.equal(unreachable.text, "暫時連不上伺服器", `${theme}: offline notice`);
+      assert.equal(unreachable.toasts, 0, `${theme}: no toast while polling`);
+      await win.webContents.executeJavaScript(
+        "window.connectionTestReply('session/getSessionStatuses:hook',[])"
+      );
+      await settle();
+      assert.equal((await offline()).text, "", `${theme}: offline notice cleared`);
+      scenarios++;
+
       // 還沒填學校平台網址：連線橫幅換成輸入框、側欄「開啟 Web 平台」停用、
       // 連線資訊的網址顯示「—」；存好網址後才回到「開始連線」
       await win.webContents.executeJavaScript(`

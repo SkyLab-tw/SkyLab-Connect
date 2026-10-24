@@ -77,6 +77,16 @@ const navClass = (name: string) => [
             <MIcon name="info" />{{ t("router.about.title") }}
           </router-link>
         </nav>
+        <div
+          v-if="store.serverUnreachable"
+          class="desktop-offline"
+          role="status"
+          :title="t('workspace.serverUnreachableHint')"
+        >
+          <MIcon name="cloud_off" :size="18" /><span>{{
+            t("workspace.serverUnreachable")
+          }}</span>
+        </div>
         <div class="desktop-account">
           <MIcon
             :name="store.loggedIn ? 'verified_user' : 'shield'"

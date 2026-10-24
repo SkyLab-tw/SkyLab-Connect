@@ -23,6 +23,7 @@
     "test:tunnel": "node scripts/test-tunnel.mjs",
     "test:resources": "node scripts/test-resource-access.mjs",
     "test:resource-groups": "node scripts/test-resource-groups.mjs",
+    "test:polling": "node scripts/test-session-polling.mjs",
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "build:electron": "npm run build && electron-builder -p never",
@@ -35,7 +36,7 @@
     "audit:security": "node scripts/audit-security.mjs",
     "test:system": "node scripts/test-system.mjs && node scripts/test-system-controller.mjs && node scripts/test-ssh-identity.mjs",
     "test:connection-ui": "node scripts/test-connection-ui.mjs",
-    "test": "npm run test:update && npm run test:settings && npm run test:backend-url && npm run test:auth && npm run test:tunnel && npm run test:resources && npm run test:resource-groups && npm run test:system"
+    "test": "npm run test:update && npm run test:settings && npm run test:backend-url && npm run test:auth && npm run test:tunnel && npm run test:resources && npm run test:resource-groups && npm run test:polling && npm run test:system"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
