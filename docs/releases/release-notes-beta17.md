@@ -12,5 +12,5 @@ SkyLab Connect Windows x64 beta.17
 SkyLab Connect 本身未簽章；內附 WireGuard 前置安裝程式為 WireGuard LLC 簽章版本。安裝前請從系統匣結束舊程式。
 
 完整桌面原始碼及建置所需共用前端元件附於 `SkyLab-Connect-Source-v0.2.0-beta.17.zip`。
-基底：[beta.16](https://github.com/1Ray0/SkyLab-Connect-Releases/releases/tag/v0.2.0-beta.16)
-本次原始碼版本：`{source_commit}`。
+基底：[beta.16](https://github.com/SkyLab-tw/SkyLab-Connect/releases/tag/v0.2.0-beta.16)
+對應原始碼以本版發行附件 ZIP 為準；舊 tag 的 GitHub 自動 Source ZIP 不含完整客戶端。

@@ -10,4 +10,4 @@ SkyLab Connect Windows x64 beta.18
 
 SkyLab Connect 採 AGPL-3.0 授權；對應原始碼與建置方式附於 `SkyLab-Connect-Source-v0.2.0-beta.18.zip`。發行檔延續現有的未簽章建置方式；內附的 WireGuard 安裝程式維持上游簽章。
 
-來源 commit：[`{source_commit}`](https://github.com/1Ray0/Campus-Cloud/commit/{source_commit})。
+對應原始碼：[發行附件 ZIP](https://github.com/SkyLab-tw/SkyLab-Connect/releases/download/v0.2.0-beta.18/SkyLab-Connect-Source-v0.2.0-beta.18.zip)。
