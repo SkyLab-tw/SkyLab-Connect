@@ -1,7 +1,7 @@
 SkyLab Connect — Third-party notices
 
 SkyLab Connect is part of SkyLab and is licensed under the GNU Affero General
-Public License v3.0. Source code: https://github.com/ntubclass/SkyLab
+Public License v3.0. Source code: https://github.com/SkyLab-tw/SkyLab-Connect
 (the full license text is in the LICENSE file of that repository).
 
 This application is built with the open-source components listed below.

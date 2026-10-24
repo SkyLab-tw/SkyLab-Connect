@@ -9,9 +9,9 @@ from struct import pack
 from PIL import Image
 
 
-ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "frontend/public"
-OUTPUT = ROOT / "desktop-client/public/logo/pixel-octo"
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = ROOT / "public/icon-source"
+OUTPUT = ROOT / "public/logo/pixel-octo"
 OUTPUT.mkdir(parents=True, exist_ok=True)
 
 icon = Image.open(SOURCE / "favicon.png").convert("RGBA")

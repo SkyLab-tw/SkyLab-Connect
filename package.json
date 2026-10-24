@@ -34,7 +34,8 @@
     "lint:fix": "eslint src/ electron/ --ext .ts,.tsx,.vue --fix",
     "audit:security": "node scripts/audit-security.mjs",
     "test:system": "node scripts/test-system.mjs && node scripts/test-system-controller.mjs && node scripts/test-ssh-identity.mjs",
-    "test:connection-ui": "node scripts/test-connection-ui.mjs"
+    "test:connection-ui": "node scripts/test-connection-ui.mjs",
+    "test": "npm run test:update && npm run test:settings && npm run test:backend-url && npm run test:auth && npm run test:tunnel && npm run test:resources && npm run test:resource-groups && npm run test:system"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -75,5 +76,10 @@
     "vue": "^3.5.22",
     "vue-i18n": "^11.1.2",
     "vue-router": "^5.3.1"
+  },
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SkyLab-tw/SkyLab-Connect.git"
   }
 }

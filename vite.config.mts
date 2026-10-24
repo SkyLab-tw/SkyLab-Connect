@@ -47,7 +47,7 @@ const buildAboutInfo = () => {
   return {
     license: "AGPL-3.0",
     repository:
-      process.env.SKYLAB_REPO_URL || "https://github.com/ntubclass/SkyLab",
+      process.env.SKYLAB_REPO_URL || "https://github.com/SkyLab-tw/SkyLab-Connect",
     dependencies
   };
 };
@@ -135,7 +135,7 @@ export default defineConfig(({ command }) => {
         "@": pathResolve("src"),
         "@build": pathResolve("build"),
         // web 前端原始碼：共用色票、mixin 與元件樣式（PixelOcto 也從這裡拿章魚）
-        "@web": pathResolve("../frontend/src")
+        "@web": pathResolve("src/shared/web")
       }
     },
     // Keep the Electron renderer separate from the web frontend on :5173.

@@ -1,0 +1,399 @@
+@use "variables" as *;
+
+@mixin respond-to($breakpoint) {
+  @if $breakpoint == sm {
+    @media (min-width: $breakpoint-sm) { @content; }
+  } @else if $breakpoint == md {
+    @media (min-width: $breakpoint-md) { @content; }
+  } @else if $breakpoint == lg {
+    @media (min-width: $breakpoint-lg) { @content; }
+  } @else if $breakpoint == xl {
+    @media (min-width: $breakpoint-xl) { @content; }
+  }
+}
+
+/* Desktop-first 收斂用：既有版面反轉成 mobile-first 成本過高時，
+   用此 mixin 取代 raw max-width media query，讓斷點吸附到共用級距。
+   新版面請優先用 mobile-first 的 respond-to。 */
+@mixin respond-below($breakpoint) {
+  @if $breakpoint == sm {
+    @media (max-width: $breakpoint-sm - 0.02px) { @content; }
+  } @else if $breakpoint == md {
+    @media (max-width: $breakpoint-md - 0.02px) { @content; }
+  } @else if $breakpoint == lg {
+    @media (max-width: $breakpoint-lg - 0.02px) { @content; }
+  } @else if $breakpoint == xl {
+    @media (max-width: $breakpoint-xl - 0.02px) { @content; }
+  }
+}
+
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@mixin flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@mixin flex-column {
+  display: flex;
+  flex-direction: column;
+}
+
+@mixin text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@mixin text-clamp($lines: 2) {
+  display: -webkit-box;
+  -webkit-line-clamp: $lines;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@mixin container {
+  width: 100%;
+  max-width: $container-max-width;
+  margin-inline: auto;
+  padding-inline: $spacing-16;
+}
+
+@mixin badge-base {
+  display: inline-flex;
+  align-items: center;
+  border-radius: $radius-pill;
+  font-size: $font-size-12;
+  font-weight: $font-weight-500;
+  /* 標籤永不換行：窄欄裡逐字直排會不可讀，寬度交給容器捲動 */
+  white-space: nowrap;
+}
+
+/* ── 標準表單欄位 ──
+   全站表單一律用這組 mixin（詳見 docs/frontend-style-guide.zh-TW.md「表單」段）：
+   .field   { @include form-field; }             標籤 + 控制項的直式容器
+   .field input, .field select, .field textarea { @include form-control; }
+   .fieldInvalid.fieldInvalid { @include form-control-invalid; }
+                                                 送出時未填的欄位，雙類名壓過巢狀選擇器
+   控制項高度刻意與 .btnPrimary / .btnSecondary 一致（36px），
+   同一列的欄位與按鈕才會對齊：算法跟 btn-base 相同——行高沿用全站 1.6（14px 字 → 22.4）
+   ＋上下內距 6×2＋框 1×2 ≈ 36px。內距若寫 8px 會變 40px，跟按鈕並排差一截。
+   欄位的排列方式（幾欄、跨欄）寫在頁面自己的 grid 上，不要改這裡的字級或內距。 */
+@mixin form-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--color-text);
+  font-size: $font-size-14;
+  font-weight: $font-weight-500;
+
+  > span {
+    margin-bottom: 3px;
+    font-weight: $font-weight-500;
+  }
+}
+
+@mixin form-control {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px $form-control-padding-x;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-8;
+  outline: 0;
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-hover) 22%, var(--color-surface));
+  font: inherit;
+  font-size: $font-size-14;
+
+  &:focus {
+    border-color: var(--color-primary);
+    background: var(--color-surface);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 12%, transparent);
+  }
+
+  &[readonly] {
+    color: var(--color-text-muted);
+    background: var(--color-hover);
+  }
+
+  /* 與按鈕的 disabled 一致；少了這條，同一張卡片停用時按鈕變淡、輸入框卻全亮，看起來還能填 */
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* 日期／時間欄的瀏覽器內建編輯區比一般文字高，照內距算會多 2px；直接鎖 36px */
+  &[type="date"],
+  &[type="time"],
+  &[type="datetime-local"],
+  &[type="month"],
+  &[type="week"] {
+    height: 36px;
+  }
+}
+
+@mixin form-control-invalid {
+  border-color: var(--color-danger);
+
+  &:focus {
+    border-color: var(--color-danger);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger) 12%, transparent);
+  }
+}
+
+/* ── 標準列表表格 ──
+   全站列表頁的表格一律用這組 mixin（詳見 docs/frontend-style-guide.zh-TW.md「表格」段）：
+   .tableWrap { @include table-wrap; }   外層玻璃容器＋橫向卷動
+   .table     { @include table-base; }   可加 min-width 撐出卷動
+   .th        { @include table-th; }
+   .tr        { @include table-tr; }     整列可點時再疊 table-tr-clickable
+                                         列數會變的表格要 table-layout: fixed（見樣式規範文件規則二）
+   .td        { @include table-td; }
+   欄寬、對齊、特殊儲存格等頁面差異寫在 @include 之後。 */
+@mixin table-wrap {
+  @include glass-surface($shadow: var(--shadow-sm));
+  border-radius: $radius-16;
+  overflow: hidden;
+  overflow-x: auto;
+}
+
+@mixin table-base {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+@mixin table-th {
+  padding: $spacing-8 $spacing-16;
+  font-size: $font-size-12;
+  font-weight: $font-weight-500;
+  color: var(--color-text-muted);
+  text-align: left;
+  background: var(--color-hover);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+@mixin table-tr {
+  transition: background $transition-base;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid var(--color-divider);
+  }
+}
+
+/* 整列 hover 變色是「這一列可以點」的訊號，不是裝飾。
+   全站列表的互動幾乎都在儲存格內的按鈕上，整列本身不可點，所以基底不給 hover；
+   只有 <tr> 自己有 onClick 時才疊這支，游標與 hover 一起給，兩者不會各自漂移。 */
+@mixin table-tr-clickable {
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-row-hover);
+  }
+}
+
+@mixin table-td {
+  padding: $spacing-8 $spacing-16;
+  font-size: $font-size-14;
+  color: var(--color-text-primary);
+  vertical-align: middle;
+}
+
+/* ── 標準按鈕（六款）──
+   全站按鈕一律用這組 mixin，不要在頁面內重抄整組樣式：
+   .btnPrimary       { @include btn-primary; }        每畫面至多一顆的主要動作
+   .btnSecondary     { @include btn-secondary; }      並列的一般動作、返回
+   .btnDanger        { @include btn-danger; }         只用在確認彈窗／最終確認步驟
+   .btnDangerOutline { @include btn-danger-outline; } 頁面內破壞性動作的「入口」
+   .btnGhost         { @include btn-ghost; }          低強調輔助動作（淡底文字鈕）
+                       @include btn-ghost($danger: true) 為紅字淡紅底變體
+   .iconBtn          { @include btn-icon; }           32×32 圖示鈕，JSX 必帶 aria-label
+                       @include btn-icon($danger: true) 未 hover 即紅字
+   .dialogClose      { @include btn-dialog-close; }   Dialog 專用右上關閉鈕：
+                       同 btn-icon($danger: true)，僅未 hover 時無底色
+   共用基底：高 36px、圓角 8、字級 14/500、hover 一律 :not(:disabled)、
+   disabled 一律 opacity .5 + not-allowed。頁面差異（寬度、margin、grid 位置）
+   寫在 @include 之後；要改高度字級請先問是不是真的需要。
+   基底自帶 1px 透明框（行高 22.4 + 內距 6×2 + 框 1×2 ≈ 36px），有框的款式
+   只換 border-color，每款高度才會一致；頁面別再寫 border: 0／none，
+   覆寫 padding 時也要把這 1px 框算進去，否則跟其他按鈕並排會差 2px。 */
+@mixin btn-base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 16px;
+  border: 1px solid transparent;
+  border-radius: $radius-8;
+  font: inherit;
+  font-size: $font-size-14;
+  font-weight: $font-weight-500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background $transition-base, border-color $transition-base, color $transition-base;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+@mixin btn-primary {
+  @include btn-base;
+  color: var(--color-text-on-primary);
+  background: var(--color-primary);
+
+  &:hover:not(:disabled) {
+    background: var(--color-primary-dark);
+  }
+}
+
+@mixin btn-secondary {
+  @include btn-base;
+  border-color: var(--color-border);
+  color: var(--color-text);
+  background: var(--color-surface);
+
+  &:hover:not(:disabled) {
+    background: var(--color-hover);
+  }
+}
+
+@mixin btn-danger {
+  @include btn-base;
+  border-color: var(--color-danger);
+  color: var(--color-text-on-primary);
+  background: var(--color-danger);
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-danger-dark);
+    background: var(--color-danger-dark);
+  }
+}
+
+@mixin btn-danger-outline {
+  @include btn-base;
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+  color: var(--color-danger);
+  background: var(--color-surface);
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-danger-dark);
+    background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface));
+  }
+}
+
+/* 淡底文字鈕：平常就有一層淡底（一般款吃 --color-hover、危險款淡紅），
+   hover 再深一階（一般款吃 --color-row-hover 並加深文字） */
+@mixin btn-ghost($danger: false) {
+  @include btn-base;
+  padding: 6px 12px;
+
+  @if $danger {
+    color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+    }
+  } @else {
+    color: var(--color-text-secondary);
+    background: var(--color-hover);
+
+    &:hover:not(:disabled) {
+      color: var(--color-text-primary);
+      background: var(--color-row-hover);
+    }
+  }
+}
+
+/* 表格列的動作選單鈕（⋮ more_vert）：白底描邊，與 btn-secondary 同一套視覺語言；
+   全專案表格的更多操作鈕一律用這款，icon 統一 more_vert */
+@mixin btn-icon-secondary {
+  @include btn-base;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+
+  &:hover:not(:disabled) {
+    color: var(--color-text);
+    background: var(--color-hover);
+  }
+}
+
+/* 圖示鈕與 ghost 同一套淡底邏輯：平常即有淡底（一般款 --color-hover、
+   危險款淡紅），hover 深一階，只差在 32×32 無內距 */
+@mixin btn-icon($danger: false) {
+  @include btn-base;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+
+  @if $danger {
+    color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+    }
+  } @else {
+    color: var(--color-text-secondary);
+    background: var(--color-hover);
+
+    &:hover:not(:disabled) {
+      color: var(--color-text-primary);
+      background: var(--color-row-hover);
+    }
+  }
+}
+
+/* Dialog 專用關閉鈕：與 btn-icon($danger: true) 同款，
+   只差未 hover 時無底色（浮在 Dialog 標題列上不搶視覺）。
+   僅用於關閉 Dialog，其他場合的圖示鈕請用 btn-icon */
+@mixin btn-dialog-close {
+  @include btn-icon($danger: true);
+  background: transparent;
+}
+
+/* 對話框遮罩避開 AI 助手面板：面板開著時 AiFloatingChat 會把面板佔的寬度寫進
+   --ai-panel-inset，透明右框吃掉這段寬度，對話框改在左側剩餘空間置中；
+   遮罩底色與 backdrop 濾鏡畫到 border-box，暗色照樣鋪滿整個畫面。
+   VNC／終端機／課堂觀看這類 AI 讀不到的畫面不套，直接蓋過助手（見 $z-screen-dialog）。
+   不設 transition：遮罩多半已有 transition: opacity（淡出用），寫了會蓋掉；
+   面板展開過程中變數會逐格更新，對話框自然跟著滑動 */
+@mixin dialog-overlay-avoid-ai {
+  border-right: var(--ai-panel-inset, 0px) solid transparent;
+}
+
+/* 玻璃表面基本組：背景塗層＋backdrop 濾鏡＋亮邊框＋陰影。
+   - 未帶 $blur 時濾鏡吃 --glass-backdrop-filter，跟隨風格切換
+     （液態玻璃等），有特殊需求才傳 $blur / $saturate 固定值
+   - $shadow 預設玻璃陰影，可換成 var(--shadow-sm) 等；
+     傳 none 表示不輸出 box-shadow */
+@mixin glass-surface($blur: null, $saturate: 1.4, $shadow: var(--shadow-glass)) {
+  background: var(--color-surface-glass);
+  @if $blur == null {
+    -webkit-backdrop-filter: var(--glass-backdrop-filter);
+    backdrop-filter: var(--glass-backdrop-filter);
+  } @else {
+    -webkit-backdrop-filter: blur($blur) saturate($saturate);
+    backdrop-filter: blur($blur) saturate($saturate);
+  }
+  border: 1px solid var(--color-surface-glass-border);
+  @if $shadow != none {
+    box-shadow: $shadow;
+  }
+}

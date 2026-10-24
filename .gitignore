@@ -25,3 +25,11 @@ release
 *.sw?
 
 pnpm-lock.yaml
+# Local credentials and release publishing state
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+release-publish-state*.json
+__pycache__/

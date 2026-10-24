@@ -74,7 +74,7 @@ const release = (version, overrides = {}) => ({
     {
       name: "SkyLab-Connect-Setup.exe",
       browser_download_url:
-        "https://github.com/1Ray0/SkyLab-Connect-Releases/releases/download/test/SkyLab-Connect-Setup.exe",
+        "https://github.com/SkyLab-tw/SkyLab-Connect/releases/download/test/SkyLab-Connect-Setup.exe",
       digest,
       size: payload.length,
       state: "uploaded"

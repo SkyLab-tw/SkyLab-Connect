@@ -1,0 +1,618 @@
+/* ===== Sidebar ===== */
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: $sidebar-width;
+  background: var(--color-sidebar-glass);
+  backdrop-filter: var(--sidebar-backdrop-filter);
+  -webkit-backdrop-filter: var(--sidebar-backdrop-filter);
+  color: var(--color-text);
+  @include flex-column;
+  z-index: 100;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease, width 0.25s ease, background-color 0.3s ease;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  border-radius: 0 $radius-16 $radius-16 0;
+  border: 1px solid var(--color-sidebar-glass-border);
+  border-left: none;
+  box-shadow: var(--shadow-md);
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  &.mobileOpen {
+    transform: translateX(0);
+  }
+
+  /* 液態玻璃在窄螢幕是蓋在內容上的抽屜：2px 的清透玻璃會讓底下頁面的字透上來、跟選單疊成一團。
+     抽屜狀態改成重霧＋較不透明的塗層（亮邊、陰影照舊）；桌機並排時背後只有背景，維持清透 */
+  @media (max-width: $breakpoint-sidebar - 0.02px) {
+    :global(body[data-style="liquid"]) & {
+      background: color-mix(in srgb, var(--color-surface) 86%, transparent);
+      backdrop-filter: blur(16px) saturate(1.4);
+      -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    }
+  }
+
+  @media (min-width: $breakpoint-sidebar) {
+    position: sticky;
+    top: var(--layout-py);
+    left: auto;
+    bottom: auto;
+    height: calc(100vh - var(--layout-py) * 2);
+    height: calc(100dvh - var(--layout-py) * 2);
+    transform: none;
+    z-index: auto;
+    align-self: stretch;
+    flex-shrink: 0;
+    border-radius: $radius-16;
+    border-left: 1px solid var(--color-sidebar-glass-border);
+
+    &.collapsed {
+      width: $sidebar-width-collapsed;
+    }
+  }
+}
+
+/* ===== Brand ===== */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: $spacing-8;
+  padding: $spacing-16 $spacing-24;
+  cursor: pointer;
+  user-select: none;
+
+  .collapsed & {
+    justify-content: center;
+    padding: $spacing-16 $spacing-4;
+  }
+}
+
+/* 章魚標誌 20:14 格，高 28px 時寬 40px；svg 直接撐，不另鎖寬 */
+.brandIcon {
+  @include flex-center;
+  height: 28px;
+  flex-shrink: 0;
+
+  svg { display: block; }
+}
+
+.brandText {
+  font-weight: $font-weight-700;
+  font-size: $font-size-16;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* 品牌列下方、麵包屑下方與底部區塊上方共用同一條分隔線，
+   側欄才讀得出上／中／下三段 */
+.divider {
+  height: 1px;
+  background: color-mix(in srgb, var(--color-text-primary) 25%, transparent);
+  margin: 0 $spacing-16;
+  flex-shrink: 0;
+
+  /* 放在 nav 裡時，nav 自己已有左右內距，再內縮 16px 會比品牌列那條短一截 */
+  .nav > & {
+    margin: 0;
+  }
+}
+
+/* ===== Nav ===== */
+.nav {
+  @include flex-column;
+  gap: 2px;
+  padding: $spacing-8 $spacing-16;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 捲軸藏起來了，改用邊緣漸層淡出交代「這側還有沒看到的項目」：
+     沒有淡出時被裁一半的項目會直接貼上分隔線，跟底部區塊糊成一團。
+     data-scroll-edges 由 hooks/useScrollEdges 依捲動位置給值 */
+  --nav-fade-top: 0px;
+  --nav-fade-bottom: 0px;
+  $nav-fade: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--nav-fade-top),
+    #000 calc(100% - var(--nav-fade-bottom)),
+    transparent 100%
+  );
+  -webkit-mask-image: $nav-fade;
+  mask-image: $nav-fade;
+
+  &[data-scroll-edges="top"],
+  &[data-scroll-edges="both"] {
+    --nav-fade-top: #{$spacing-16};
+  }
+
+  &[data-scroll-edges="bottom"],
+  &[data-scroll-edges="both"] {
+    --nav-fade-bottom: #{$spacing-24};
+  }
+}
+
+/* ===== Navigation group ===== */
+.group {
+  @include flex-column;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: $spacing-8 + 4px;
+  padding: 8px $spacing-8;
+  border-radius: $radius-8;
+  width: 100%;
+  text-align: left;
+  color: var(--color-text-secondary);
+  font-size: $font-size-14;
+  font-weight: $font-weight-500;
+  transition: background $transition-base, color $transition-base;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-hover);
+    color: var(--color-text);
+  }
+
+  &.groupHeaderActive {
+    color: var(--color-text);
+  }
+
+  .collapsed & {
+    justify-content: center;
+    padding: 10px;
+    gap: 0;
+  }
+}
+
+.groupLabel {
+  flex: 1;
+  @include text-truncate;
+}
+
+.groupChevron {
+  display: flex;
+  align-items: center;
+  transition: transform $transition-base;
+  opacity: 0.5;
+  flex-shrink: 0;
+
+  .collapsed & {
+    display: none;
+  }
+
+  &.open {
+    transform: rotate(90deg);
+  }
+}
+
+.groupItems {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+
+  &.groupItemsOpen {
+    grid-template-rows: 1fr;
+  }
+
+  .collapsed & {
+    grid-template-rows: 0fr;
+  }
+}
+
+.groupItemsInner {
+  @include flex-column;
+  gap: 2px;
+  padding-left: $spacing-16;
+  overflow: hidden;
+
+  .collapsed & {
+    padding-left: 0;
+  }
+}
+
+/* ===== Nav Item ===== */
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: $spacing-8 + 4px;
+  padding: 8px $spacing-8;
+  border-radius: $radius-8;
+  color: var(--color-text-secondary);
+  font-size: $font-size-14;
+  text-align: left;
+  white-space: nowrap;
+  width: 100%;
+  transition: background $transition-base, color $transition-base;
+
+  &:hover {
+    background: var(--color-hover);
+    color: var(--color-text);
+  }
+
+  &.active {
+    background: var(--color-primary);
+    color: var(--color-text-on-primary);
+    box-shadow: var(--shadow-sm);
+
+    .navHint { color: var(--color-text-on-primary); }
+  }
+
+  .collapsed & {
+    justify-content: center;
+    padding: 10px;
+    gap: 0;
+  }
+}
+
+.navLabel {
+  flex: 1;
+  @include text-truncate;
+}
+
+/* ===== 釘選 ===== */
+.navItemRow {
+  position: relative;
+
+  .navItem {
+    padding-right: 30px;
+  }
+
+  &:hover {
+    .navItem:not(.active) {
+      background: var(--color-hover);
+      color: var(--color-text);
+    }
+
+    .pinBtn {
+      opacity: 1;
+    }
+  }
+
+  .collapsed & {
+    .navItem {
+      padding-right: 10px;
+    }
+
+    .pinBtn {
+      display: none;
+    }
+  }
+}
+
+.pinBtn {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  translate: 0 -50%;
+  @include flex-center;
+  width: 22px;
+  height: 22px;
+  border-radius: $radius-8;
+  color: var(--color-text-muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity $transition-base, color $transition-base, background $transition-base;
+
+  &:hover,
+  &:focus-visible {
+    background: color-mix(in srgb, var(--color-text-primary) 12%, transparent);
+    color: var(--color-text);
+    opacity: 1;
+  }
+
+  /* 已釘選：常駐顯示（未 hover 也看得到），作為狀態標記兼取消入口。
+     未 hover 時不給底色，只留傾斜的釘子，避免整排出現一堆按鈕方塊；
+     旋轉套在圖示上而非按鈕本身，hover 的圓角底才不會跟著轉成菱形 */
+  &.pinBtnPinned {
+    opacity: 1;
+    color: var(--color-text-secondary);
+
+    > span {
+      rotate: 45deg;
+    }
+  }
+}
+
+/* 選中項目底色為主色，釘子改用主色上的文字色才看得見 */
+.navItem.active + .pinBtn {
+  color: color-mix(in srgb, var(--color-text-on-primary) 80%, transparent);
+
+  &:hover,
+  &:focus-visible {
+    background: color-mix(in srgb, var(--color-text-on-primary) 20%, transparent);
+    color: var(--color-text-on-primary);
+  }
+}
+
+.navHint {
+  font-size: $font-size-12;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+/* ===== 管理員設定核心側欄 ===== */
+
+/* 麵包屑：交代「從哪來 / 現在在哪」，不是清單的一項。
+   只有左半的「主控台」可點，右半是目前位置的靜態標示 */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: $spacing-4;
+  padding: 6px $spacing-8;
+  margin-bottom: $spacing-4;
+  font-size: $font-size-12;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.crumbLink {
+  padding: 2px 6px;
+  margin-left: -6px;
+  border-radius: $radius-8;
+  color: var(--color-text-secondary);
+  font-size: inherit;
+  cursor: pointer;
+  transition: background $transition-base, color $transition-base;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--color-hover);
+    color: var(--color-text);
+  }
+}
+
+.crumbCurrent {
+  color: var(--color-text-primary);
+  font-weight: $font-weight-500;
+  @include text-truncate;
+}
+
+/* 側欄收合時放不下麵包屑，退回成純箭頭鈕 */
+.backItem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 10px;
+  margin-bottom: $spacing-4;
+  border-radius: $radius-8;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background $transition-base, color $transition-base;
+
+  &:hover {
+    background: var(--color-hover);
+    color: var(--color-text);
+  }
+}
+
+/* ===== Popup animations ===== */
+@keyframes popupIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+@keyframes popupOut {
+  from { opacity: 1; transform: translateY(0)   scale(1); }
+  to   { opacity: 0; transform: translateY(6px) scale(0.97); }
+}
+
+.popupOpening {
+  animation: popupIn 0.15s ease forwards;
+}
+
+.popupClosing {
+  animation: popupOut 0.15s ease forwards;
+}
+
+/* ===== Appearance Popup ===== */
+.appearanceWrap {
+  position: relative;
+}
+
+/* portal 到 body，位置由 usePopupPosition 以 inline style 決定
+   （側欄 overflow 裁切 + 收合時 72px 寬，彈窗留在側欄內必破版） */
+.appearancePopup {
+  position: fixed;
+  @include glass-surface($shadow: var(--shadow-md));
+  border-radius: $radius-12;
+  padding: $spacing-4;
+  @include flex-column;
+  gap: 2px;
+  z-index: 200;
+}
+
+.optionFlag {
+  font-size: 16px;
+  line-height: 1;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.appearanceOption {
+  display: flex;
+  align-items: center;
+  gap: $spacing-8;
+  padding: 7px $spacing-8;
+  border-radius: $radius-8;
+  font-size: $font-size-14;
+  color: var(--color-text-secondary);
+  width: 100%;
+  text-align: left;
+  transition: background $transition-base, color $transition-base;
+
+  &:hover {
+    background: var(--color-hover);
+    color: var(--color-text);
+  }
+
+  &.appearanceOptionActive {
+    background: var(--color-primary);
+    color: var(--color-text-on-primary);
+  }
+}
+
+/* ===== Bottom ===== */
+/* 分隔線由上方的 .divider 負責（原本的 border-top 吃玻璃邊框色，
+   在淺色底上是白線，等於看不見） */
+.bottom {
+  @include flex-column;
+  gap: 4px;
+  padding: $spacing-8 $spacing-16;
+  flex-shrink: 0;
+}
+
+/* ===== User Popup ===== */
+/* portal 到 body，定位同 .appearancePopup 的說明 */
+.userPopup {
+  position: fixed;
+  @include glass-surface($shadow: var(--shadow-md));
+  border-radius: $radius-12;
+  padding: $spacing-4;
+  z-index: 200;
+}
+
+/* 液態玻璃的折射濾鏡會讓彈窗被背後的側欄文字干擾，
+   彈窗改用毛玻璃預設濾鏡確保可讀性
+   （表面塗層 liquid 已不覆寫、即為預設值，這裡毋須再蓋回） */
+:global(body[data-style="liquid"]) {
+  .userPopup,
+  .appearancePopup {
+    --color-surface-glass-border: rgba(255, 255, 255, 0.5);
+    --glass-backdrop-filter: blur(12px) saturate(1.4);
+  }
+}
+
+/* 深色底加重塗層，蓋住彈窗背後的側欄文字 */
+:global(body.dark[data-style="liquid"]) {
+  .userPopup,
+  .appearancePopup {
+    --color-surface-glass: rgba(22, 27, 38, 0.85);
+    --color-surface-glass-border: rgba(255, 255, 255, 0.07);
+  }
+}
+
+.userPopupHeader {
+  display: flex;
+  align-items: center;
+  gap: $spacing-8;
+  padding: $spacing-8;
+}
+
+.userPopupInfo {
+  @include flex-column;
+  min-width: 0;
+
+  .userName {
+    font-size: $font-size-14;
+    font-weight: $font-weight-500;
+    color: var(--color-text);
+    @include text-truncate;
+  }
+
+  .userEmail {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    @include text-truncate;
+  }
+}
+
+.userPopupDivider {
+  height: 1px;
+  background: var(--color-border);
+  margin: $spacing-4 0;
+}
+
+.userPopupItem {
+  display: flex;
+  align-items: center;
+  gap: $spacing-8;
+  padding: 7px $spacing-8;
+  border-radius: $radius-8;
+  font-size: $font-size-14;
+  color: var(--color-text-secondary);
+  width: 100%;
+  text-align: left;
+  transition: background $transition-base, color $transition-base;
+
+  &:hover {
+    background: var(--color-hover);
+    color: var(--color-text);
+  }
+
+  &.userPopupItemDanger {
+    color: var(--color-danger);
+    &:hover {
+      background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface));
+    }
+  }
+}
+
+/* ===== User ===== */
+.user {
+  display: flex;
+  align-items: center;
+  gap: $spacing-8 + 2px;
+  padding: $spacing-8;
+  margin-top: $spacing-4;
+  border-radius: $radius-12;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background $transition-base;
+
+  &:hover {
+    background: var(--color-hover);
+  }
+
+  &.userActive {
+    background: var(--color-primary);
+    color: var(--color-text-on-primary);
+
+    .userName { color: var(--color-text-on-primary); }
+    .userEmail { color: color-mix(in srgb, var(--color-text-on-primary) 75%, transparent); }
+    .avatar    { background: color-mix(in srgb, var(--color-text-on-primary) 25%, transparent); }
+  }
+
+  .collapsed & {
+    justify-content: center;
+    padding: $spacing-8 $spacing-4;
+  }
+}
+
+.userInfo {
+  @include flex-column;
+  min-width: 0;
+  flex: 1;
+}
+
+.userName {
+  font-size: $font-size-14;
+  font-weight: $font-weight-500;
+  color: var(--color-text-primary);
+  @include text-truncate;
+}
+
+.userEmail {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  @include text-truncate;
+}

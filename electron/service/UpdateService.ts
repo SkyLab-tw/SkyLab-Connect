@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const RELEASES_API =
-  "https://api.github.com/repos/1Ray0/SkyLab-Connect-Releases/releases?per_page=30";
+  "https://api.github.com/repos/SkyLab-tw/SkyLab-Connect/releases?per_page=30";
 const SETUP_ASSET_NAME = "SkyLab-Connect-Setup.exe";
 const MAX_INSTALLER_SIZE = 512 * 1024 * 1024;
 const DOWNLOAD_HOSTS = new Set([
