@@ -1,0 +1,60 @@
+@use "element";
+@use "scrollbar";
+
+/* 色票、reset、背景暈染、MIcon 旋轉都直接用 web 的 global.scss（main.ts 先 import 它），
+   這裡只放桌面端自己的：Element Plus 變數對應、整個視窗當 App 用的設定 */
+
+/* ── Element Plus 跟著同一組色票走 ──
+   設在 body（不是 :root）：web 的深色色票掛在 body.dark，
+   EP 變數要在同一層代入才會吃到深色值；EP 自己的深色檔掛在 html.dark，這裡較近、蓋得過它 */
+body {
+  --el-color-primary: var(--color-primary);
+  --el-color-success: var(--color-success);
+  --el-color-danger: var(--color-danger);
+  --el-color-error: var(--color-danger);
+  --el-color-warning: var(--color-pending);
+  --el-color-info: var(--color-status-neutral);
+  --el-bg-color: var(--color-surface);
+  --el-bg-color-overlay: var(--color-surface);
+  --el-fill-color-blank: var(--color-surface);
+  --el-fill-color-light: var(--color-hover);
+  --el-text-color-primary: var(--color-text-primary);
+  --el-text-color-regular: var(--color-text);
+  --el-text-color-secondary: var(--color-text-secondary);
+  --el-text-color-placeholder: var(--color-text-muted);
+  --el-border-color: var(--color-border);
+  --el-border-color-light: var(--color-border);
+  --el-border-color-lighter: var(--color-divider);
+  --el-overlay-color-lighter: var(--color-overlay);
+}
+
+/* 深色：EP 主色改用深底上看得清的 on-surface 藍，淡色階以表面色混出
+   （EP 的深色檔是拿它預設的 #409eff 算的，不蓋掉會冒出另一種藍） */
+body.dark {
+  --el-color-primary: var(--color-primary-on-surface);
+  --el-color-primary-light-3: color-mix(in srgb, var(--color-primary-on-surface) 70%, var(--color-surface));
+  --el-color-primary-light-5: color-mix(in srgb, var(--color-primary-on-surface) 50%, var(--color-surface));
+  --el-color-primary-light-7: color-mix(in srgb, var(--color-primary-on-surface) 30%, var(--color-surface));
+  --el-color-primary-light-8: color-mix(in srgb, var(--color-primary-on-surface) 20%, var(--color-surface));
+  --el-color-primary-light-9: color-mix(in srgb, var(--color-primary-on-surface) 10%, var(--color-surface));
+  --el-color-primary-dark-2: var(--color-primary-light);
+}
+
+/* ── 整個視窗是一個 App：撐滿、不讓文字被當網頁選取（輸入框與可複製的值例外） ── */
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+  user-select: none;
+}
+
+input,
+textarea,
+[data-selectable] {
+  user-select: text;
+}

@@ -1,0 +1,621 @@
+/* 桌面端的版面與共用 class。變數與 mixin 由 vite.config.mts 注入 web 的
+   _variables.scss／_mixins.scss，規格以 docs/frontend-style-guide.zh-TW.md 為準，不在這裡另立一套。
+   側欄、頁首、分段切換、空狀態、載入中直接用 web 元件的樣式檔（見 src/components） */
+
+/* ── 按鈕：web 的六款 mixin ── */
+.sl-btn-primary {
+  @include btn-primary;
+}
+
+.sl-btn-secondary {
+  @include btn-secondary;
+}
+
+.sl-btn-ghost {
+  @include btn-ghost;
+}
+
+.sl-btn-danger-outline {
+  @include btn-danger-outline;
+}
+
+/* 圖示鈕：web 的 btn-icon 是 32px（給表格列用）；桌面端的圖示鈕都跟 36px 按鈕排同一列
+   （頁首的重新整理、機器卡片的 SSH／RDP），放大到同高才對得齊 */
+.sl-btn-icon {
+  @include btn-icon;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+}
+
+/* 白底細框的圖示鈕（web 的 btn-icon-secondary）：跟旁邊的次要按鈕同款，例如頁首的明暗切換 */
+.sl-btn-icon-secondary {
+  @include btn-icon-secondary;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+}
+
+/* 文字連結（關於頁的授權、原始碼、套件名稱） */
+.sl-link {
+  padding: 0;
+  color: var(--color-primary-on-surface);
+  font-weight: $font-weight-500;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+/* ── 狀態徽章：12% 淡底＋狀態色文字、不加框（樣式規範「狀態 Badge」） ── */
+.sl-badge {
+  @include badge-base;
+  padding: 4px 10px;
+}
+
+@each $tone,
+  $token
+    in (
+      success: success,
+      info: info,
+      pending: pending,
+      danger: danger,
+      muted: status-neutral
+    )
+{
+  .sl-badge--#{$tone} {
+    background: color-mix(in srgb, var(--color-#{$token}) 12%, transparent);
+    color: var(--color-#{$token});
+  }
+}
+
+/* ── 頁內提示條：連線錯誤、授權更新失敗等常駐狀態；色票同 web 的 toast（語意色字、10% 底、30% 框） ── */
+.sl-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-8;
+  padding: 12px $spacing-16;
+  border: 1px solid;
+  border-radius: $radius-8;
+  font-size: $font-size-14;
+  line-height: $line-height-base;
+  overflow-wrap: anywhere;
+  user-select: text;
+
+  .material-icons-outlined {
+    margin-top: 2px;
+  }
+
+  small {
+    display: block;
+    opacity: 0.85;
+    font-size: $font-size-12;
+  }
+}
+
+@each $tone, $token in (danger: danger, pending: pending) {
+  .sl-notice--#{$tone} {
+    border-color: color-mix(
+      in srgb,
+      var(--color-#{$token}) 30%,
+      var(--color-surface)
+    );
+    background: color-mix(
+      in srgb,
+      var(--color-#{$token}) 10%,
+      var(--color-surface)
+    );
+    color: var(--color-#{$token});
+  }
+}
+
+/* ── 玻璃卡（同 web 設定頁的 .card） ── */
+.sl-card {
+  @include glass-surface;
+  @include flex-column;
+  gap: $spacing-16;
+  padding: $spacing-24;
+  border-radius: $radius-16;
+}
+
+.sl-card__header {
+  @include flex-between;
+  align-items: flex-start;
+  gap: $spacing-16;
+}
+
+.sl-card__title {
+  color: var(--color-text-primary);
+  font-size: $font-size-18;
+  font-weight: $font-weight-700;
+}
+
+.sl-card__hint {
+  margin-top: $spacing-4;
+  color: var(--color-text-muted);
+  font-size: $font-size-14;
+}
+
+/* ── 表單欄位：標籤在上、控制項 36px（form-field／form-control） ── */
+.sl-field {
+  @include form-field;
+
+  /* 分段切換維持自己的寬度，不要被直式欄位撐滿 */
+  > [role="group"] {
+    align-self: flex-start;
+  }
+}
+
+.sl-input {
+  @include form-control;
+}
+
+.sl-field__hint {
+  color: var(--color-text-muted);
+  font-size: $font-size-12;
+  font-weight: $font-weight-400;
+}
+
+/* 格式不對的欄位：紅框＋提示改紅字（雙類名才壓得過 form-control 的 :focus） */
+.sl-input.sl-input--invalid {
+  @include form-control-invalid;
+}
+
+.sl-field__hint--error {
+  color: var(--color-danger);
+}
+
+/* ── 表格（關於頁的開源元件清單） ── */
+.sl-table {
+  @include table-base;
+
+  th {
+    @include table-th;
+    position: sticky;
+    top: 0;
+  }
+
+  tr {
+    @include table-tr;
+  }
+
+  td {
+    @include table-td;
+  }
+}
+
+/* 對話框裡的「標籤：值」清單 */
+.sl-details {
+  margin: 0;
+}
+
+.sl-details > div {
+  @include flex-between;
+  gap: 20px;
+  padding: 10px 0;
+  font-size: $font-size-14;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid var(--color-divider);
+  }
+}
+
+.sl-details dt {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.sl-details dd {
+  min-width: 0;
+  color: var(--color-text-primary);
+  text-align: right;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* ── 外框：浮動的玻璃側欄（同 web 側欄的圓角卡）＋右側捲動內容 ── */
+.desktop-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  gap: $spacing-24;
+  width: 100%;
+  height: 100vh;
+  padding: $spacing-16;
+  overflow: hidden;
+}
+
+.desktop-sidebar {
+  @include flex-column;
+  min-height: 0;
+  padding: 0 0 $spacing-8;
+  overflow-y: auto;
+  border: 1px solid var(--color-sidebar-glass-border);
+  border-radius: $radius-16;
+  background: var(--color-sidebar-glass);
+  box-shadow: var(--shadow-md);
+  color: var(--color-text);
+  -webkit-backdrop-filter: var(--sidebar-backdrop-filter);
+  backdrop-filter: var(--sidebar-backdrop-filter);
+  scrollbar-width: none;
+}
+
+.desktop-brand-sub {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: $font-weight-500;
+  letter-spacing: 0.12em;
+}
+
+.desktop-nav-list {
+  @include flex-column;
+  gap: $spacing-4;
+  padding: $spacing-8 12px;
+}
+
+.desktop-nav-list .update-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--color-danger);
+}
+
+.desktop-sidebar-bottom {
+  margin-top: auto;
+}
+
+.desktop-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px 4px;
+  color: var(--color-text-muted);
+  font-size: $font-size-14;
+}
+
+/* 內容區是 container：各頁依「內容區寬度」（不是視窗寬度）決定分不分欄 */
+.desktop-main {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  container-type: inline-size;
+}
+
+/* ── 頁面：滿寬，區塊間距 24（同 web 的 .page） ── */
+.workspace-page {
+  @include flex-column;
+  gap: $spacing-24;
+  padding: $spacing-8 $spacing-8 $spacing-24 0;
+}
+
+.workspace-section {
+  @include flex-column;
+  gap: $spacing-16;
+}
+
+/* ── 連線狀態橫幅 ── */
+.connection-banner {
+  @include glass-surface;
+  display: flex;
+  align-items: center;
+  gap: $spacing-16;
+  padding: $spacing-16 $spacing-24;
+  border-radius: $radius-16;
+  transition: border-color $transition-base;
+
+  > .material-icons-outlined {
+    color: var(--color-primary-on-surface);
+  }
+
+  > .is-running {
+    color: var(--color-success);
+  }
+}
+
+.connection-banner--error {
+  border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
+
+  > .material-icons-outlined {
+    color: var(--color-danger);
+  }
+}
+
+.connection-copy {
+  min-width: 0;
+
+  h2 {
+    color: var(--color-text-primary);
+    font-size: $font-size-16;
+    font-weight: $font-weight-700;
+  }
+
+  p {
+    margin-top: 2px;
+    color: var(--color-text-muted);
+    font-size: $font-size-14;
+  }
+}
+
+.connection-banner > button {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* ── 資源工具列：分類（SegmentedControl）＋［搜尋＋檢視切換］，三者同為 36px ──
+   視窗窄時右邊那組整組換到第二列，搜尋框吃滿該列 */
+.resource-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.resource-toolbar__end {
+  display: flex;
+  flex: 1 1 320px;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.resource-search {
+  @include form-control;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: $spacing-8;
+  color: var(--color-text-muted);
+
+  &:focus-within {
+    border-color: var(--color-primary);
+    background: var(--color-surface);
+    box-shadow: 0 0 0 3px
+      color-mix(in srgb, var(--color-primary) 12%, transparent);
+    color: var(--color-primary-on-surface);
+  }
+
+  input {
+    width: 100%;
+    min-width: 0;
+    color: var(--color-text);
+
+    &::placeholder {
+      color: var(--color-text-muted);
+    }
+  }
+}
+
+/* ── 資源分組 ── */
+.resource-group > header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+
+  h2 {
+    color: var(--color-text-primary);
+    font-size: $font-size-16;
+    font-weight: $font-weight-700;
+  }
+
+  span {
+    color: var(--color-text-muted);
+    font-size: $font-size-14;
+  }
+}
+
+/* 課程／快速練習資料夾：可點展開，hover 只加陰影、不改框色 */
+.course-folder__toggle {
+  @include glass-surface($shadow: var(--shadow-sm));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 12px $spacing-16;
+  border-radius: $radius-12;
+  color: var(--color-text-primary);
+  text-align: left;
+  transition: box-shadow $transition-base;
+
+  &:hover {
+    box-shadow: var(--shadow-md);
+  }
+
+  > .material-icons-outlined:first-child {
+    color: var(--color-primary-on-surface);
+  }
+}
+
+.course-folder__name {
+  flex: 1;
+  min-width: 0;
+  font-size: $font-size-16;
+  font-weight: $font-weight-700;
+  @include text-truncate;
+}
+
+.course-folder__meta {
+  color: var(--color-text-muted);
+  font-size: $font-size-14;
+  white-space: nowrap;
+}
+
+.course-folder__chevron {
+  color: var(--color-text-muted);
+  transition: transform $transition-base;
+
+  &.is-open {
+    transform: rotate(180deg);
+  }
+}
+
+/* ── 機器卡片 ── */
+.resource-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-16;
+}
+
+.resource-card {
+  @include glass-surface;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  grid-template-rows: auto auto 1fr;
+  grid-template-areas:
+    "heading info"
+    "address address"
+    "actions actions";
+  gap: 12px;
+  min-width: 0;
+  padding: 20px;
+  border-radius: $radius-16;
+}
+
+.resource-card-heading {
+  @include flex-column;
+  grid-area: heading;
+  min-width: 0;
+  align-items: flex-start;
+  gap: $spacing-8;
+
+  h3 {
+    color: var(--color-text-primary);
+    font-size: $font-size-16;
+    font-weight: $font-weight-700;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* 內網 IP：玻璃卡裡的內容區塊一律白底細框 */
+.resource-address {
+  grid-area: address;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: $radius-8;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font:
+    13px / 1.6 ui-monospace,
+    Consolas,
+    monospace;
+  user-select: text;
+}
+
+.resource-card-actions {
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
+  align-self: end;
+  align-items: center;
+  min-width: 0;
+  gap: $spacing-8;
+  margin-top: auto;
+}
+
+.resource-launch {
+  @include btn-secondary;
+  flex: 1 1 auto;
+  min-width: max-content;
+}
+
+.resource-info {
+  grid-area: info;
+  align-self: start;
+  justify-self: end;
+}
+
+.resource-unavailable {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted);
+  font-size: $font-size-14;
+
+  &.is-expired {
+    color: var(--color-danger);
+  }
+}
+
+/* 列表檢視為連線與詳細資料各留一欄，避免文字按鈕把圖示鈕擠出卡片。 */
+.resource-grid--list {
+  grid-template-columns: 1fr;
+}
+
+.resource-grid--list .resource-card,
+.resource-card--blocked {
+  grid-template-columns: minmax(0, 1fr) 150px 280px 36px;
+  grid-template-rows: auto;
+  grid-template-areas: "heading address actions info";
+  align-items: center;
+  gap: $spacing-16;
+  padding: 14px 20px;
+}
+
+.resource-grid--list .resource-card--blocked,
+.resource-card--blocked {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) 280px 36px;
+  grid-template-areas: "heading actions info";
+
+  .resource-address {
+    display: none;
+  }
+}
+
+.resource-grid--list .resource-card-actions,
+.resource-card--blocked .resource-card-actions,
+.resource-grid--list .resource-info,
+.resource-card--blocked .resource-info {
+  align-self: center;
+  margin-top: 0;
+}
+
+/* 依實際內容寬度收斂，側欄與資料夾內距也算在內。 */
+@container (max-width: 900px) {
+  .resource-grid--list .resource-card {
+    grid-template-columns: minmax(0, 1fr) 280px 36px;
+    grid-template-areas:
+      "heading actions info"
+      "address actions info";
+    gap: 10px 16px;
+  }
+
+  .resource-grid--list .resource-card--blocked {
+    grid-template-areas: "heading actions info";
+  }
+}
+
+@container (max-width: 600px) {
+  .resource-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .resource-grid--list .resource-card,
+  .resource-card--blocked {
+    grid-template-columns: minmax(0, 1fr) 36px;
+    grid-template-areas:
+      "heading info"
+      "address address"
+      "actions actions";
+    gap: 12px;
+  }
+
+  .resource-grid--list .resource-card--blocked,
+  .resource-card--blocked {
+    grid-template-areas:
+      "heading info"
+      "actions actions";
+  }
+
+  .resource-grid--list .resource-info,
+  .resource-card--blocked .resource-info {
+    align-self: start;
+  }
+}
