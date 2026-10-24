@@ -53,7 +53,12 @@ const navClass = (name: string) => [
         <button type="button" :class="sb.navItem" @click="detailsOpen = true">
           <MIcon name="network_check" />{{ t("workspace.connectionInfo") }}
         </button>
-        <button type="button" :class="sb.navItem" @click="openWeb">
+        <button
+          type="button"
+          :class="sb.navItem"
+          :disabled="!store.backendConfigured"
+          @click="openWeb"
+        >
           <MIcon name="open_in_new" />{{ t("workspace.openWeb") }}
         </button>
       </nav>
@@ -100,7 +105,7 @@ const navClass = (name: string) => [
         </div>
         <div>
           <dt>{{ t("config.backend.label") }}</dt>
-          <dd>{{ store.backendUrl }}</dd>
+          <dd>{{ store.backendConfigured ? store.backendUrl : "—" }}</dd>
         </div>
         <div>
           <dt>{{ t("workspace.protocol") }}</dt>

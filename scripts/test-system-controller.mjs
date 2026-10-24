@@ -97,3 +97,21 @@ test("RDP service errors retain their actionable code through IPC", async () => 
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(req.replies[0].bizCode, "B1019");
 });
+
+test("links still open when the school platform URL is not set yet", async () => {
+  BeanFactory.setBean("systemService", {
+    openUrl: async (...args) => calls.push(args)
+  });
+  BeanFactory.setBean("settingsService", {
+    getBackendUrl: async () => {
+      throw new BusinessError(ResponseCode.BACKEND_NOT_CONFIGURED);
+    }
+  });
+  const req = request({ url: "https://github.com/SkyLab-tw/SkyLab-Connect" });
+  new SystemController().openUrl(req);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(calls, [
+    ["https://github.com/SkyLab-tw/SkyLab-Connect", undefined]
+  ]);
+  assert.equal(req.replies[0].bizCode, "A1000");
+});

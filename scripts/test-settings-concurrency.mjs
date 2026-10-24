@@ -156,3 +156,26 @@ test("a failed write does not block later writes", async () => {
   await service.setTokens("access-4", "refresh-4");
   assert.equal(await service.getRefreshToken(), "refresh-4");
 });
+
+test("an unconfigured backend URL is reported instead of silently defaulted", async () => {
+  await repo.truncate();
+  assert.equal((await service.get()).backendUrl, "");
+  await assert.rejects(service.getBackendUrl(), err => {
+    assert.equal(err.bizCode, "B1021");
+    return true;
+  });
+  assert.equal((await service.get()).backendUrl, "");
+});
+
+test("a bare host or full browser URL is saved as its https origin", async () => {
+  await reset();
+  await service.save({ backendUrl: "other.example.org" });
+  assert.equal(await service.getBackendUrl(), "https://other.example.org");
+  await service.save({
+    backendUrl: "https://campus.example.org/login?next=/home#top"
+  });
+  assert.equal((await service.get()).backendUrl, "https://campus.example.org");
+  await assert.rejects(
+    service.save({ backendUrl: "https://user:pw@campus.example.org" })
+  );
+});

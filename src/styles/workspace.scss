@@ -257,6 +257,14 @@
   padding: $spacing-8 12px;
 }
 
+/* 還沒填學校平台網址時「開啟 Web 平台」停用：淡化、滑過也不變色 */
+.desktop-nav-list button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: none;
+  color: var(--color-text-secondary);
+}
+
 .desktop-nav-list .update-dot {
   flex: none;
   width: 8px;
@@ -345,6 +353,42 @@
 .connection-banner > button {
   flex-shrink: 0;
   margin-left: auto;
+}
+
+/* ── 還沒填學校平台網址：連線橫幅換成輸入框，存好網址才出現「開始連線」 ── */
+.backend-setup {
+  @include glass-surface;
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-16;
+  padding: $spacing-16 $spacing-24;
+  border-radius: $radius-16;
+
+  > .material-icons-outlined {
+    color: var(--color-primary-on-surface);
+  }
+}
+
+.backend-setup__body {
+  @include flex-column;
+  flex: 1;
+  gap: $spacing-8;
+}
+
+.backend-setup__row {
+  display: flex;
+  gap: 12px;
+  max-width: 520px;
+  margin-top: $spacing-4;
+
+  > .sl-input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  > button {
+    flex-shrink: 0;
+  }
 }
 
 /* ── 資源工具列：分類（SegmentedControl）＋［搜尋＋檢視切換］，三者同為 36px ──

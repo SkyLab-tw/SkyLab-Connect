@@ -3,6 +3,7 @@ import { on, onListener, send } from "@/utils/ipcUtils";
 import { ElMessage } from "element-plus";
 import { defineStore } from "pinia";
 import { ipcRouters, listeners } from "../../electron/core/IpcRouter";
+import BackendUrlUtils from "../../electron/utils/BackendUrlUtils";
 import router from "../router";
 
 interface AppState {
@@ -12,6 +13,7 @@ interface AppState {
   connectionStarting: boolean;
   language: string;
   autoStart: boolean;
+  /** 學校平台網址；空字串＝還沒填（首頁改顯示輸入框，見 backendConfigured） */
   backendUrl: string;
   /** 設定存檔進行中（換後端網址時含先登出），設定頁據此停用儲存鈕 */
   settingsSaving: boolean;
@@ -90,7 +92,7 @@ export const useAppStore = defineStore("app", {
     connectionStarting: false,
     language: "zh-TW",
     autoStart: false,
-    backendUrl: "https://skylab-tw.com",
+    backendUrl: "",
     settingsSaving: false,
     settingsErrorCode: "",
     queuedSettingsPatch: null,
@@ -111,6 +113,10 @@ export const useAppStore = defineStore("app", {
     permanentDismissals: loadPermanentDismissals()
   }),
   getters: {
+    /** 已填學校平台網址；沒填時不能連線、不能開網頁版 */
+    backendConfigured(state): boolean {
+      return BackendUrlUtils.parse(state.backendUrl).ok;
+    },
     /** First not-yet-dismissed warning, used to drive the global alert. */
     activeWarning(state): SkyLabSessionStatus | null {
       return (
@@ -228,7 +234,7 @@ export const useAppStore = defineStore("app", {
         if (data && !this.settingsSaving) {
           this.language = data.language || "zh-TW";
           this.autoStart = !!data.launchAtStartup;
-          this.backendUrl = data.backendUrl || this.backendUrl;
+          this.backendUrl = data.backendUrl || "";
         }
       });
       on(
@@ -240,7 +246,7 @@ export const useAppStore = defineStore("app", {
           if (data) {
             this.language = queued?.language || data.language || this.language;
             this.autoStart = queued?.launchAtStartup ?? !!data.launchAtStartup;
-            this.backendUrl = data.backendUrl || this.backendUrl;
+            this.backendUrl = data.backendUrl || "";
           }
           if (queued) this.saveSettings(queued);
         },

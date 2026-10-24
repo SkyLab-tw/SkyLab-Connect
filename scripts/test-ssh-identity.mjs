@@ -34,7 +34,7 @@ const first = "2e801048-422e-4761-ae26-f2fb0ddd5848";
 const replacement = "1e801048-422e-4761-ae26-f2fb0ddd5849";
 function setup() {
   const state = {
-    url: "https://skylab-tw.com",
+    url: "https://school.example.org",
     resource: { vmid: 212, request_id: first, can_control: true },
     status: 200,
     paths: []

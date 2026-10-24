@@ -12,18 +12,24 @@ const emit = (channel, data, bizCode = "A1000") => {
     fn({}, { bizCode, data, message: "Regression test scenario" });
   }
 };
+const settings = { language: "zh-TW", backendUrl: "https://campus.example.org" };
+const sent = [];
 contextBridge.exposeInMainWorld("connectionTestReply", emit);
+contextBridge.exposeInMainWorld("connectionTestSent", () => sent.slice());
 contextBridge.exposeInMainWorld("electronIpcRenderer", {
-  send(channel) {
+  send(channel, params) {
+    sent.push({ channel, params });
     setTimeout(() => {
       const data =
         channel === "auth/getAuthState"
           ? { loggedIn: true }
           : channel === "settings/getSettings"
-            ? { language: "zh-TW" }
-            : ["tunnel/getStatus", "tunnel/refresh"].includes(channel)
-              ? tunnel
-              : [];
+            ? settings
+            : channel === "settings/saveSettings"
+              ? { ...settings, ...params }
+              : ["tunnel/getStatus", "tunnel/refresh"].includes(channel)
+                ? tunnel
+                : [];
       emit(channel + ":hook", data);
     }, 20);
   },

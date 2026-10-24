@@ -130,6 +130,14 @@
       authenticating: "Waiting for sign-in",
       authHint: "Complete sign-in in your browser · Connects automatically"
     },
+    backendSetup: {
+      title: "Connect to your school's SkyLab",
+      description:
+        "Enter the address of your school's SkyLab platform, the one you sign in to in the browser. You can change it later in Settings.",
+      button: "Continue",
+      invalid:
+        "This address is not valid. Enter the https address of your school's SkyLab platform, for example school.skylab-tw.com."
+    },
     machines: {
       unavailable: "No connection",
       noTargets:
@@ -192,20 +200,21 @@
       tips: "Start SkyLab Connect hidden when the OS boots."
     },
     backend: {
-      label: "Backend URL",
-      tips: "SkyLab server root URL, without /login.",
+      label: "School platform URL",
+      tips: "The address of your school's SkyLab platform, the same one you sign in to in the browser. You can paste a full URL; only the domain is kept.",
+      placeholder: "e.g. school.skylab-tw.com",
       logoutNotice:
         "Saving signs you out and disconnects first, then you sign in to the new server.",
-      confirmTitle: "Change the backend URL?",
+      confirmTitle: "Change the school platform URL?",
       confirmMessage:
         "SkyLab Connect will sign out and close the current secure connection before switching servers. You will need to sign in again.",
       confirmButton: "Sign out and change",
       error: {
-        required: "Enter the backend URL.",
-        invalid: "This URL is not valid, e.g. https://skylab-tw.com.",
+        required: "Enter the school platform URL.",
+        invalid: "This URL is not valid, e.g. school.skylab-tw.com.",
         insecure:
           "Use https:// (http://localhost is allowed for local testing).",
-        extra: "The URL must not include credentials, a query (?) or #."
+        credentials: "The URL must not include a user name or password."
       }
     },
     account: {
@@ -275,11 +284,13 @@
     B1016:
       "The secure connection couldn't be disconnected. Try again. @:errors.support",
     B1017:
-      "Can't reach the SkyLab server. Check your network connection, or check the Backend URL in Settings.",
+      "Can't reach the SkyLab server. Check your network connection, or check the school platform URL in Settings.",
     B1018: "Couldn't open it. Try again. @:errors.support",
     B1019:
       "The machine refused the RDP connection. Its remote desktop service may not be enabled.",
     B1020:
-      "Couldn't reach the machine's RDP port. First check that the machine is running and the secure connection is working."
+      "Couldn't reach the machine's RDP port. First check that the machine is running and the secure connection is working.",
+    B1021:
+      "The school platform URL isn't set yet. Enter the address of your school's SkyLab platform first."
   }
 };

@@ -56,14 +56,14 @@ test("device login uses the configured site when backend returns an old login UR
         expires_in: 300
       })
     },
-    { getBackendUrl: async () => "https://skylab-tw.com" },
+    { getBackendUrl: async () => "https://school.example.org" },
     {}
   );
   try {
     await service.startLogin(() => {});
     assert.equal(
       globalThis.openedLoginUrl,
-      "https://skylab-tw.com/login?device_code=test-code"
+      "https://school.example.org/login?device_code=test-code"
     );
   } finally {
     service.cancelLogin();
@@ -78,7 +78,7 @@ test("an expired device login reports the login-timeout code", async () => {
         expires_in: 0
       })
     },
-    { getBackendUrl: async () => "https://skylab-tw.com" },
+    { getBackendUrl: async () => "https://school.example.org" },
     {}
   );
   const result = await new Promise((resolve, reject) => {
@@ -101,7 +101,7 @@ const failedPollResult = async error => {
         throw error;
       }
     },
-    { getBackendUrl: async () => "https://skylab-tw.com" },
+    { getBackendUrl: async () => "https://school.example.org" },
     {}
   );
   return new Promise((resolve, reject) => {

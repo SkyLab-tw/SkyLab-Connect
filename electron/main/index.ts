@@ -6,7 +6,6 @@
   MenuItem,
   MenuItemConstructorOptions,
   powerMonitor,
-  shell,
   Tray
 } from "electron";
 import { release, totalmem, cpus } from "node:os";
@@ -102,16 +101,18 @@ class SkyLabApp {
         new Date().toLocaleString()
       );
     });
+    // 新視窗一律擋下；白名單內的網址（GitHub、使用者填的學校平台）改用系統瀏覽器開
     this._win.webContents.setWindowOpenHandler(({ url }) => {
-      try {
-        const target = new URL(url);
-        const allowedHosts = new Set(["github.com", "skylab-tw.com"]);
-        if (target.protocol === "https:" && allowedHosts.has(target.hostname)) {
-          void shell.openExternal(target.toString());
-        }
-      } catch {
-        // Invalid URLs are denied below.
-      }
+      const settingsService: SettingsService =
+        BeanFactory.getBean("settingsService");
+      const systemService: SystemService = BeanFactory.getBean("systemService");
+      settingsService
+        .getBackendUrl()
+        .catch(() => undefined)
+        .then(backendUrl => systemService.openUrl(url, backendUrl))
+        .catch(() => {
+          // Invalid or disallowed URLs stay closed.
+        });
       return { action: "deny" };
     });
     this._win.webContents.on("will-navigate", event => {

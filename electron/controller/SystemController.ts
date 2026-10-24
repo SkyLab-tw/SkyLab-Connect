@@ -30,6 +30,8 @@ class SystemController extends BaseController {
       BeanFactory.getBean("settingsService");
     settingsService
       .getBackendUrl()
+      // 還沒填學校平台網址時只比對固定白名單（GitHub 連結仍要能開）
+      .catch(() => undefined)
       .then(backendUrl =>
         this._systemService.openUrl(req.args?.url, backendUrl)
       )

@@ -10,6 +10,7 @@ import {
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ipcRouters } from "../../../electron/core/IpcRouter";
+import BackendUrlUtils from "../../../electron/utils/BackendUrlUtils";
 import ResourceCards from "./ResourceCards.vue";
 import RdpHelpDialog from "./RdpHelpDialog.vue";
 import EmptyState from "@/components/EmptyState.vue";
@@ -191,6 +192,18 @@ const showOperationError = (
 const openWeb = () =>
   send(ipcRouters.SYSTEM.openUrl, { url: appStore.backendUrl });
 
+/* 還沒填學校平台網址：連線區塊換成輸入框；存檔成功、store 拿到網址後才換回「開始連線」 */
+const backendDraft = ref("");
+const backendDraftInvalid = ref(false);
+watch(backendDraft, () => {
+  backendDraftInvalid.value = false;
+});
+const submitBackend = () => {
+  const check = BackendUrlUtils.parse(backendDraft.value);
+  backendDraftInvalid.value = !check.ok;
+  if (check.ok) appStore.saveSettings({ backendUrl: check.url });
+};
+
 const status = computed(() => {
   if (appStore.tunnelStatus.connectionError) return "error";
   if (!appStore.tunnelStatus.running) return "stopped";
@@ -279,7 +292,7 @@ const startTunnel = () => {
 };
 
 const handleConnect = () => {
-  if (loading.value) return;
+  if (loading.value || !appStore.backendConfigured) return;
   if (appStore.loggedIn) {
     startTunnel();
     return;
@@ -427,7 +440,47 @@ onUnmounted(() => {
       </button>
     </PageHeader>
 
+    <form
+      v-if="!appStore.backendConfigured"
+      class="backend-setup"
+      novalidate
+      @submit.prevent="submitBackend"
+    >
+      <MIcon name="school" :size="24" />
+      <div class="connection-copy backend-setup__body">
+        <h2>{{ t("home.backendSetup.title") }}</h2>
+        <p>{{ t("home.backendSetup.description") }}</p>
+        <div class="backend-setup__row">
+          <input
+            v-model="backendDraft"
+            class="sl-input"
+            :class="{ 'sl-input--invalid': backendDraftInvalid }"
+            type="url"
+            :placeholder="t('config.backend.placeholder')"
+            :aria-label="t('config.backend.label')"
+            :aria-invalid="backendDraftInvalid"
+            aria-describedby="backend-setup-error"
+            spellcheck="false"
+          />
+          <button
+            type="submit"
+            class="sl-btn-primary"
+            :disabled="!backendDraft.trim() || appStore.settingsSaving"
+          >
+            {{ t("home.backendSetup.button") }}
+          </button>
+        </div>
+        <small
+          v-if="backendDraftInvalid"
+          id="backend-setup-error"
+          class="sl-field__hint sl-field__hint--error"
+          role="alert"
+          >{{ t("home.backendSetup.invalid") }}</small
+        >
+      </div>
+    </form>
     <section
+      v-else
       class="connection-banner"
       :class="{ 'connection-banner--error': status === 'error' }"
       :aria-label="t('workspace.connectionInfo')"
@@ -627,7 +680,11 @@ onUnmounted(() => {
         </EmptyState>
       </template>
     </template>
-    <EmptyState v-else icon="cloud_off" :title="t('home.empty.notLoggedIn')" />
+    <EmptyState
+      v-else-if="appStore.backendConfigured"
+      icon="cloud_off"
+      :title="t('home.empty.notLoggedIn')"
+    />
   </main>
   <RdpHelpDialog v-model="rdpHelpOpen" :error-code="rdpErrorCode" />
 </template>

@@ -18,7 +18,7 @@ npm ci
 npm run dev
 ```
 
-開發介面位於 `http://127.0.0.1:3344`。在設定頁指定 SkyLab 伺服器；登入與資源連線仍需要運作中的 SkyLab 後端。
+開發介面位於 `http://127.0.0.1:3344`。第一次開啟時在首頁輸入學校 SkyLab 平台的網址（之後可在設定頁修改）；登入與資源連線仍需要運作中的 SkyLab 後端。
 
 ```powershell
 npm run lint
