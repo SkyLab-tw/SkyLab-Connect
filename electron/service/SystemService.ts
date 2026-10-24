@@ -5,16 +5,16 @@ import { BusinessError, ResponseCode } from "../core/BusinessError";
 
 class SystemService {
   /**
-   * 只開允許的網址：固定的 GitHub／SkyLab 網域，加上設定頁填的後端網址
-   * （「開啟 Web 平台」用它；可能是自架網域或本機測試的 http://localhost）
+   * 只開允許的網址：固定的 GitHub 網域，加上使用者填的學校平台網址
+   * （「開啟 Web 平台」用它；可能是各校網域或本機測試的 http://localhost）。
+   * 還沒填網址時 backendUrl 是 undefined，GitHub 連結照樣能開
    */
   async openUrl(url: string, backendUrl?: string) {
     const target = new URL(url);
     const allowedHosts = new Set([
       "github.com",
       "objects.githubusercontent.com",
-      "github-releases.githubusercontent.com",
-      "skylab-tw.com"
+      "github-releases.githubusercontent.com"
     ]);
     const isBackend =
       !!backendUrl && target.origin === new URL(backendUrl).origin;

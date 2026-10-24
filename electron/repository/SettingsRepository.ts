@@ -114,18 +114,16 @@ class SettingsRepository extends BaseRepository<SkyLabSettings> {
         existing.language = "zh-TW";
         languageMigrated = true;
       }
-      // Move only retired built-in defaults to the current production site;
-      // keep user-configured servers intact.
+      // 只把舊版內建過的網址改到北商（舊 token 一併清掉）；使用者自己填的網址
+      // 一律不動，沒填的維持空字串，等使用者在首頁輸入
       if (
-        !existing.backendUrl ||
-        [
-          GlobalConstant.LEGACY_BACKEND_URL,
-          GlobalConstant.PREVIOUS_BACKEND_URL
-        ].includes(existing.backendUrl.replace(/\/$/, ""))
+        GlobalConstant.RETIRED_BACKEND_URLS.includes(
+          (existing.backendUrl || "").trim().replace(/\/$/, "")
+        )
       ) {
         return this.updateById(this._id, {
           ...existing,
-          backendUrl: GlobalConstant.DEFAULT_BACKEND_URL,
+          backendUrl: GlobalConstant.NTUB_BACKEND_URL,
           token: "",
           refreshToken: ""
         });
@@ -148,7 +146,7 @@ class SettingsRepository extends BaseRepository<SkyLabSettings> {
     }
     const defaults: SkyLabSettings = {
       _id: this._id,
-      backendUrl: GlobalConstant.DEFAULT_BACKEND_URL,
+      backendUrl: "",
       token: "",
       refreshToken: "",
       language: GlobalConstant.DEFAULT_LANGUAGE,

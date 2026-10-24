@@ -4,7 +4,7 @@ import { build } from "esbuild";
 import { createServer } from "node:net";
 import { once } from "node:events";
 
-globalThis.__systemTest = { calls: [], automatic: true, exitCode: 0 };
+globalThis.__systemTest = { calls: [], opened: [], automatic: true, exitCode: 0 };
 const bundle = await build({
   entryPoints: ["electron/service/SystemService.ts"],
   bundle: true,
@@ -22,7 +22,8 @@ const bundle = await build({
         builder.onLoad({ filter: /.*/, namespace: "fake" }, ({ path }) => ({
           contents:
             path === "electron"
-              ? "export const app = {}, shell = {};"
+              ? `export const app = {};
+         export const shell = { openExternal: async url => { globalThis.__systemTest.opened.push(url); } };`
               : `import {EventEmitter} from 'node:events';
          export const spawn = (command, args, options) => {
            const child = new EventEmitter(); child.unref = () => {};
@@ -40,7 +41,7 @@ const { default: SystemService } = await import(
 );
 let service;
 beforeEach(() => {
-  globalThis.__systemTest = { calls: [], automatic: true, exitCode: 0 };
+  globalThis.__systemTest = { calls: [], opened: [], automatic: true, exitCode: 0 };
   service = new SystemService();
 });
 
@@ -219,4 +220,28 @@ test("invalid RDP destinations cannot reach the network or launcher", async () =
     await assert.rejects(service.openRdp(...args), /Invalid RDP target/);
   }
   assert.equal(globalThis.__systemTest.calls.length, 0);
+});
+
+test("GitHub links open even before the school platform URL is set", async () => {
+  await service.openUrl("https://github.com/SkyLab-tw/SkyLab-Connect");
+  assert.deepEqual(globalThis.__systemTest.opened, [
+    "https://github.com/SkyLab-tw/SkyLab-Connect"
+  ]);
+});
+
+test("only the configured school platform is allowed besides GitHub", async () => {
+  await assert.rejects(service.openUrl("https://skylab-tw.com/"), /not allowed/);
+  await assert.rejects(
+    service.openUrl("https://skylab-tw.com/", "https://ntub.skylab-tw.com"),
+    /not allowed/
+  );
+  await service.openUrl(
+    "https://ntub.skylab-tw.com/",
+    "https://ntub.skylab-tw.com"
+  );
+  await service.openUrl("http://localhost:8000/", "http://localhost:8000");
+  assert.deepEqual(globalThis.__systemTest.opened, [
+    "https://ntub.skylab-tw.com/",
+    "http://localhost:8000/"
+  ]);
 });

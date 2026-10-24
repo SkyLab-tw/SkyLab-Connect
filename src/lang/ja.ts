@@ -40,6 +40,9 @@ export default {
     view: "表示形式",
     clearFilters: "絞り込みを解除",
     resourceError: "リソースを更新できません",
+    serverUnreachable: "サーバーに一時的に接続できません",
+    serverUnreachableHint:
+      "バックグラウンドで自動的に再試行しています。接続が回復するとこの表示は消えます。",
     appearance: "外観",
     dark: "ダーク",
     light: "ライト",
@@ -131,6 +134,14 @@ export default {
       authenticating: "ログイン待機中",
       authHint: "ブラウザーでログインを完了すると自動接続します"
     },
+    backendSetup: {
+      title: "学校の SkyLab に接続",
+      description:
+        "学校の SkyLab プラットフォームのアドレス（ふだんブラウザーでログインしているアドレス）を入力してください。あとから設定で変更できます。",
+      button: "続行",
+      invalid:
+        "アドレスが正しくありません。学校の SkyLab プラットフォームの https アドレスを入力してください（例：school.skylab-tw.com）。"
+    },
     machines: {
       unavailable: "接続できません",
       noTargets:
@@ -194,20 +205,21 @@ export default {
       tips: "OS の起動時に SkyLab Connect を非表示で開始します。"
     },
     backend: {
-      label: "バックエンド URL",
-      tips: "/login を含まない SkyLab サーバーのルート URL。",
+      label: "学校のプラットフォーム URL",
+      tips: "学校の SkyLab プラットフォームのアドレスで、ブラウザーでログインするアドレスと同じです。完全な URL を貼り付けても、ドメインだけが使われます。",
+      placeholder: "例：school.skylab-tw.com",
       logoutNotice:
         "保存すると、ログアウトして接続を切断してから新しいサーバーに切り替えます。",
-      confirmTitle: "バックエンド URL を変更しますか？",
+      confirmTitle: "学校のプラットフォーム URL を変更しますか？",
       confirmMessage:
         "SkyLab Connect はログアウトして現在の安全な接続を切断してから、新しいサーバーに切り替えます。再度ログインが必要です。",
       confirmButton: "ログアウトして変更",
       error: {
-        required: "バックエンド URL を入力してください。",
-        invalid: "URL の形式が正しくありません（例：https://skylab-tw.com）。",
+        required: "学校のプラットフォーム URL を入力してください。",
+        invalid: "URL の形式が正しくありません（例：school.skylab-tw.com）。",
         insecure:
           "https:// を使用してください（ローカルテストのみ http://localhost 可）。",
-        extra: "URL に認証情報、クエリ（?）、# を含めることはできません。"
+        credentials: "URL にユーザー名やパスワードを含めることはできません。"
       }
     },
     account: {
@@ -277,11 +289,13 @@ export default {
     B1016:
       "安全な接続を切断できませんでした。もう一度お試しください。@:errors.support",
     B1017:
-      "SkyLab サーバーに接続できません。ネットワーク接続を確認するか、「設定」でバックエンド URL を確認してください。",
+      "SkyLab サーバーに接続できません。ネットワーク接続を確認するか、「設定」で学校のプラットフォーム URL を確認してください。",
     B1018: "開けませんでした。もう一度お試しください。@:errors.support",
     B1019:
       "マシンが RDP 接続を拒否しました。リモートデスクトップサービスが有効になっていない可能性があります。",
     B1020:
-      "マシンの RDP ポートに接続できません。まず、マシンが実行中で、安全な接続が正常か確認してください。"
+      "マシンの RDP ポートに接続できません。まず、マシンが実行中で、安全な接続が正常か確認してください。",
+    B1021:
+      "学校のプラットフォーム URL がまだ設定されていません。先に学校の SkyLab プラットフォームのアドレスを入力してください。"
   }
 };

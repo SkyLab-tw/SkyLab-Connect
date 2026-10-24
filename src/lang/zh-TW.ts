@@ -40,6 +40,8 @@
     view: "檢視方式",
     clearFilters: "清除篩選",
     resourceError: "無法更新資源",
+    serverUnreachable: "暫時連不上伺服器",
+    serverUnreachableHint: "會在背景自動重試，恢復連線後這個提示就會消失。",
     appearance: "外觀",
     dark: "深色",
     light: "淺色",
@@ -128,6 +130,14 @@
       authenticating: "等待登入驗證",
       authHint: "請在瀏覽器完成登入 · 完成後自動連線"
     },
+    backendSetup: {
+      title: "連到你學校的 SkyLab",
+      description:
+        "輸入學校 SkyLab 平台的網址（就是平常用瀏覽器登入的那個網址），之後可以在設定裡修改。",
+      button: "繼續",
+      invalid:
+        "網址不正確，請輸入學校 SkyLab 平台的 https 網址，例如 school.skylab-tw.com。"
+    },
     machines: {
       unavailable: "無可用連線",
       noTargets:
@@ -190,18 +200,19 @@
       tips: "開機時自動啟動 SkyLab Connect 並隱藏視窗。"
     },
     backend: {
-      label: "後端網址",
-      tips: "SkyLab 伺服器根網址，不包含 /login。",
+      label: "學校平台網址",
+      tips: "學校 SkyLab 平台的網址，跟用瀏覽器登入的網址相同；貼上完整網址也可以，只會取網域部分。",
+      placeholder: "例如 school.skylab-tw.com",
       logoutNotice: "儲存後會先登出並中斷目前的連線，再到新的伺服器重新登入。",
-      confirmTitle: "變更後端網址？",
+      confirmTitle: "變更學校平台網址？",
       confirmMessage:
         "SkyLab Connect 會先登出並中斷目前的安全連線，再改用新的伺服器，之後需要重新登入。",
       confirmButton: "登出並變更",
       error: {
-        required: "請輸入後端網址。",
-        invalid: "網址格式不正確，例如 https://skylab-tw.com。",
+        required: "請輸入學校平台網址。",
+        invalid: "網址格式不正確，例如 school.skylab-tw.com。",
         insecure: "必須使用 https://（本機測試可用 http://localhost）。",
-        extra: "網址不能包含帳號密碼、查詢參數（?）或 #。"
+        credentials: "網址不能包含帳號密碼。"
       }
     },
     account: {
@@ -259,9 +270,11 @@
     B1014: "偵測到上次留下的安全連線，請按「開始連線」重新建立。",
     B1015: "伺服器的網路設定已更新，請按「開始連線」重新套用。",
     B1016: "無法中斷安全連線，請再試一次。@:errors.support",
-    B1017: "連不到 SkyLab 伺服器。請確認網路連線，或到「設定」檢查後端網址。",
+    B1017:
+      "連不到 SkyLab 伺服器。請確認網路連線，或到「設定」檢查學校平台網址。",
     B1018: "無法開啟，請再試一次。@:errors.support",
     B1019: "主機拒絕了 RDP 連線，可能尚未啟用遠端桌面服務。",
-    B1020: "連不到主機的 RDP 連接埠。請先確認主機已開機，且安全連線正常。"
+    B1020: "連不到主機的 RDP 連接埠。請先確認主機已開機，且安全連線正常。",
+    B1021: "還沒設定學校平台網址，請先輸入學校 SkyLab 平台的網址。"
   }
 };

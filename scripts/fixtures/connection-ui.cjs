@@ -73,6 +73,80 @@ app
       assert.equal(disconnected.error, true);
       assert.notEqual(disconnected.title, normal.title);
       scenarios++;
+
+      // 背景輪詢連不上後端：側欄常駐「暫時連不上伺服器」，不跳錯誤訊息；下次成功就消失
+      const offline = () =>
+        win.webContents.executeJavaScript(`(()=>({
+        text:document.querySelector('.desktop-offline')?.lastElementChild.textContent.trim()||'',
+        toasts:document.querySelectorAll('.el-message').length
+      }))()`);
+      for (let poll = 0; poll < 3; poll++) {
+        await win.webContents.executeJavaScript(
+          "window.connectionTestReply('session/getSessionStatuses:hook',null,'B1017')"
+        );
+      }
+      await settle();
+      const unreachable = await offline();
+      assert.equal(unreachable.text, "暫時連不上伺服器", `${theme}: offline notice`);
+      assert.equal(unreachable.toasts, 0, `${theme}: no toast while polling`);
+      await win.webContents.executeJavaScript(
+        "window.connectionTestReply('session/getSessionStatuses:hook',[])"
+      );
+      await settle();
+      assert.equal((await offline()).text, "", `${theme}: offline notice cleared`);
+      scenarios++;
+
+      // 還沒填學校平台網址：連線橫幅換成輸入框、側欄「開啟 Web 平台」停用、
+      // 連線資訊的網址顯示「—」；存好網址後才回到「開始連線」
+      await win.webContents.executeJavaScript(`
+        window.connectionTestReply('auth/getAuthState:hook',{loggedIn:false});
+        window.connectionTestReply('settings/getSettings:hook',{language:'zh-TW',backendUrl:''});
+      `);
+      await settle();
+      const setupState = () =>
+        win.webContents.executeJavaScript(`(()=>({
+        banner:!!document.querySelector('.connection-banner'),
+        form:!!document.querySelector('.backend-setup input'),
+        openWebDisabled:[...document.querySelectorAll('.desktop-nav-list button')].some(b=>b.disabled)
+      }))()`);
+      assert.deepEqual(
+        await setupState(),
+        { banner: false, form: true, openWebDisabled: true },
+        `${theme}: unconfigured`
+      );
+      const shownUrl = await win.webContents.executeJavaScript(`new Promise(resolve=>{
+        [...document.querySelectorAll('.desktop-nav-list button')][0].click();
+        setTimeout(()=>{
+          const dd=[...document.querySelectorAll('.sl-details dd')][1];
+          resolve(dd&&dd.textContent.trim());
+          document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+        },300);
+      })`);
+      assert.equal(shownUrl, "—", `${theme}: connection info without URL`);
+      await win.webContents.executeJavaScript(`(()=>{
+        const input=document.querySelector('.backend-setup input');
+        input.value='ntub.skylab-tw.com/login?next=/home';
+        input.dispatchEvent(new Event('input',{bubbles:true}));
+      })()`);
+      await settle();
+      await win.webContents.executeJavaScript(
+        "document.querySelector('.backend-setup button[type=submit]').click()"
+      );
+      await win.webContents.executeJavaScript(
+        "new Promise(resolve=>setTimeout(resolve,100))"
+      );
+      const saved = (
+        await win.webContents.executeJavaScript("window.connectionTestSent()")
+      ).filter(item => item.channel === "settings/saveSettings");
+      assert.deepEqual(saved.at(-1).params, {
+        backendUrl: "https://ntub.skylab-tw.com"
+      });
+      assert.deepEqual(
+        await setupState(),
+        { banner: true, form: false, openWebDisabled: false },
+        `${theme}: configured after saving`
+      );
+      scenarios++;
       win.destroy();
     }
     console.log(

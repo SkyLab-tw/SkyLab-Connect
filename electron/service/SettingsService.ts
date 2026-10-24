@@ -1,6 +1,6 @@
 import { app } from "electron";
+import { BusinessError, ResponseCode } from "../core/BusinessError";
 import Logger from "../core/Logger";
-import GlobalConstant from "../core/GlobalConstant";
 import SettingsRepository, {
   type SettingsPatch
 } from "../repository/SettingsRepository";
@@ -11,7 +11,7 @@ const BACKEND_URL_ERRORS: Record<BackendUrlProblem, string> = {
   required: "Backend URL is invalid",
   invalid: "Backend URL is invalid",
   insecure: "Backend URL must use HTTPS",
-  extra: "Backend URL must not contain credentials, query, or fragment"
+  credentials: "Backend URL must not contain credentials"
 };
 
 class SettingsService {
@@ -76,16 +76,12 @@ class SettingsService {
     await this.setTokens("", "");
   }
 
+  /** 還沒填學校的平台網址就丟錯，不會自己補一個預設網址 */
   async getBackendUrl(): Promise<string> {
-    const settings = await this.get();
-    try {
-      return this.normalizeBackendUrl(settings.backendUrl);
-    } catch {
-      const migrated = await this.save({
-        backendUrl: GlobalConstant.DEFAULT_BACKEND_URL
-      });
-      return migrated.backendUrl;
-    }
+    const result = BackendUrlUtils.parse((await this.get()).backendUrl);
+    if (result.ok === false)
+      throw new BusinessError(ResponseCode.BACKEND_NOT_CONFIGURED);
+    return result.url;
   }
 
   private normalizeBackendUrl(value: string): string {

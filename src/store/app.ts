@@ -3,6 +3,7 @@ import { on, onListener, send } from "@/utils/ipcUtils";
 import { ElMessage } from "element-plus";
 import { defineStore } from "pinia";
 import { ipcRouters, listeners } from "../../electron/core/IpcRouter";
+import BackendUrlUtils from "../../electron/utils/BackendUrlUtils";
 import router from "../router";
 
 interface AppState {
@@ -12,6 +13,7 @@ interface AppState {
   connectionStarting: boolean;
   language: string;
   autoStart: boolean;
+  /** 學校平台網址；空字串＝還沒填（首頁改顯示輸入框，見 backendConfigured） */
   backendUrl: string;
   /** 設定存檔進行中（換後端網址時含先登出），設定頁據此停用儲存鈕 */
   settingsSaving: boolean;
@@ -20,6 +22,8 @@ interface AppState {
   resourcesLoading: boolean;
   /** 載入資源失敗的錯誤碼（畫面用 describeError 翻譯），空字串＝沒有錯誤 */
   resourcesErrorCode: string;
+  /** 背景輪詢連不上後端：側欄常駐提示，下次成功就清掉（不跳錯誤訊息） */
+  serverUnreachable: boolean;
   updateInfo: SkyLabUpdateInfo | null;
   updateChecking: boolean;
   updateCheckError: boolean;
@@ -90,12 +94,13 @@ export const useAppStore = defineStore("app", {
     connectionStarting: false,
     language: "zh-TW",
     autoStart: false,
-    backendUrl: "https://skylab-tw.com",
+    backendUrl: "",
     settingsSaving: false,
     settingsErrorCode: "",
     queuedSettingsPatch: null,
     resourcesLoading: false,
     resourcesErrorCode: "",
+    serverUnreachable: false,
     updateInfo: null,
     updateChecking: false,
     updateCheckError: false,
@@ -111,6 +116,10 @@ export const useAppStore = defineStore("app", {
     permanentDismissals: loadPermanentDismissals()
   }),
   getters: {
+    /** 已填學校平台網址；沒填時不能連線、不能開網頁版 */
+    backendConfigured(state): boolean {
+      return BackendUrlUtils.parse(state.backendUrl).ok;
+    },
     /** First not-yet-dismissed warning, used to drive the global alert. */
     activeWarning(state): SkyLabSessionStatus | null {
       return (
@@ -228,7 +237,7 @@ export const useAppStore = defineStore("app", {
         if (data && !this.settingsSaving) {
           this.language = data.language || "zh-TW";
           this.autoStart = !!data.launchAtStartup;
-          this.backendUrl = data.backendUrl || this.backendUrl;
+          this.backendUrl = data.backendUrl || "";
         }
       });
       on(
@@ -240,7 +249,7 @@ export const useAppStore = defineStore("app", {
           if (data) {
             this.language = queued?.language || data.language || this.language;
             this.autoStart = queued?.launchAtStartup ?? !!data.launchAtStartup;
-            this.backendUrl = data.backendUrl || this.backendUrl;
+            this.backendUrl = data.backendUrl || "";
           }
           if (queued) this.saveSettings(queued);
         },
@@ -286,6 +295,7 @@ export const useAppStore = defineStore("app", {
         data => {
           this.resourcesLoading = false;
           this.resourcesErrorCode = "";
+          this.serverUnreachable = false;
           if (!this.loggedIn) return;
           this.resources = Array.isArray(data) ? data : [];
           lastResourceRefreshAt = Date.now();
@@ -310,6 +320,7 @@ export const useAppStore = defineStore("app", {
       on(
         ipcRouters.SESSION.getSessionStatuses,
         data => {
+          this.serverUnreachable = false;
           const next: SkyLabSessionStatus[] = Array.isArray(data) ? data : [];
           this.sessionStatuses = next;
           // Forget in-memory dismissals once should_warn goes false.
@@ -337,8 +348,11 @@ export const useAppStore = defineStore("app", {
             this.refreshResources();
           }
         },
-        /* 背景輪詢：失敗就保留上一次的狀態，不跳 toast（離線時才不會每 30 秒跳一次） */
-        () => undefined
+        /* 背景輪詢：失敗就保留上一次的狀態，不跳 toast（離線時才不會每 30 秒跳一次），
+           改在側欄常駐「暫時連不上伺服器」；登入過期另由 skylab:auth-expired 處理 */
+        code => {
+          if (code !== NOT_LOGGED_IN) this.serverUnreachable = true;
+        }
       );
       on(ipcRouters.SESSION.extendSession, () => {
         // Refresh statuses immediately so the dialog dismisses naturally.
@@ -464,6 +478,7 @@ export const useAppStore = defineStore("app", {
       }
       this.sessionStatuses = [];
       this.dismissedWarnings = [];
+      this.serverUnreachable = false;
     },
     handleSessionExpired() {
       /* 同時失敗的請求都會走到這裡，只在第一次（還是登入狀態時）提示 */

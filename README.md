@@ -18,7 +18,7 @@ npm ci
 npm run dev
 ```
 
-開發介面位於 `http://127.0.0.1:3344`。在設定頁指定 SkyLab 伺服器；登入與資源連線仍需要運作中的 SkyLab 後端。
+開發介面位於 `http://127.0.0.1:3344`。第一次開啟時在首頁輸入學校 SkyLab 平台的網址（之後可在設定頁修改）；登入與資源連線仍需要運作中的 SkyLab 後端。
 
 ```powershell
 npm run lint
@@ -39,6 +39,14 @@ npm run build:electron:win
 ```
 
 安裝檔輸出至 `release/<version>/`。請勿提交 node_modules、建置產物、憑證、token 或發行暫存狀態。
+
+## 發佈新版本
+
+1. 更新 `package.json` 與 `package-lock.json` 的版號，新增 `docs/releases/release-notes-beta<N>.md`（正式版用 `release-notes-v<版號>.md`），經 PR 合併到 `main`。
+2. 在合併後的 commit 建立同名 tag，推送到 `SkyLab-tw/SkyLab-Connect`，例如 `git tag v0.2.0-beta.19` 後 `git push <remote> v0.2.0-beta.19`。
+3. [Release workflow](.github/workflows/release.yml) 會重跑全部檢查，建置未簽章的安裝版與 Portable，連同原始碼 ZIP 與 `SHA256SUMS.txt` 直接發佈成最新版。已安裝的 SkyLab Connect 會在一小時內提示更新。
+
+tag 與版號不一致、缺少發佈說明，或同版 Release 已存在時，workflow 會停止，不會覆蓋既有版本。
 
 ## 來源與分支
 
