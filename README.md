@@ -47,6 +47,10 @@ npm run build:electron:win
 - 客戶端位於 repo 根目錄；原本引用主專案的共用樣式與章魚元件已移入 `src/shared/web/`，不需要相鄰的主專案資料夾。
 - [搬移來源與驗證方式](docs/MIGRATION.md)、[原架構文件](docs/wireguard-desktop-architecture.zh-TW.md)。原架構與樣式文件記錄搬移前的主專案結構，獨立 repo 的操作方式以本 README 為準。
 
+## 與平台整合
+
+後端登入、下載與 WireGuard API 由 [SkyLab](https://github.com/SkyLab-tw/SkyLab) 維護。API 路徑、下載設定、跨 repo 更新方式與舊版來源下載方式見 [整合說明](docs/INTEGRATION.md)。
+
 ## 授權
 
 SkyLab Connect 採 AGPL-3.0，完整授權見 [LICENSE](LICENSE)。原始 Electron／Vue 範本的 MIT 聲明保留於 [NOTICE](NOTICE) 與 [範本授權](docs/template-LICENSE-MIT.txt)，其他元件聲明見 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)。
