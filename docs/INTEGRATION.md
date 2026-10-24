@@ -28,7 +28,7 @@ repo 改名不會改動平台 API。客戶端繼續使用以下路徑：
 
 1. 客戶端在本 repo 根目錄執行 `npm ci`、`npm run lint`、`npm test`、`npm run audit:security`、`npm run build`、`npm run test:connection-ui`。
 2. `src/shared/web/` 是已提交的客戶端輸入；平台樣式變更需要明確移植到這裡並重新驗證，不依賴相鄰的主專案資料夾。
-3. 發布新版本時，先提交版本號與 lockfile，再從該 commit 建置與建立新 tag；安裝檔名保持 `SkyLab-Connect-Setup.exe`／`SkyLab-Connect-Portable.exe`。保留對應來源，讓 release tag 與建置來源一致。
+3. 發布新版本時，先提交版本號、lockfile 與發佈說明，再從該 commit 推送 tag；[Release workflow](../.github/workflows/release.yml) 會從 tag 建置並發佈，安裝檔名保持 `SkyLab-Connect-Setup.exe`／`SkyLab-Connect-Portable.exe`，並附上該 commit 的原始碼 ZIP，讓 release tag 與建置來源一致。步驟見 [README](../README.md#發佈新版本)。
 4. 平台端只需部署下載設定與 API 變更；桌面端建置和測試在本 repo 的 CI 執行。
 
 主專案另一條 10/23 版本仍保留於 `archive/monorepo-main-2026-10-23`。來源與驗證紀錄見 [MIGRATION.md](MIGRATION.md)。
