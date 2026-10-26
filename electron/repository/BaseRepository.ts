@@ -98,7 +98,6 @@ class BaseRepository<T extends StoredRecord> {
     });
   }
 
-  /** 只改給定的欄位（`$set`），其餘欄位保持資料庫裡的現值。 */
   patchById(id: string, fields: Partial<T>): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       this.db.update({ _id: id }, { $set: fields }, {}, err => {

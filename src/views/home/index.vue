@@ -1,31 +1,38 @@
 <script lang="ts" setup>
 import router from "@/router";
 import { useAppStore } from "@/store/app";
+import { describeError, NOT_LOGGED_IN } from "@/utils/errors";
 import { on, send } from "@/utils/ipcUtils";
 import {
   findResourceForTunnel,
   groupResourcesByCourse
 } from "@/utils/resourceGroups";
-import { ElMessage } from "element-plus";
-import {
-  computed,
-  defineComponent,
-  onMounted,
-  onUnmounted,
-  ref,
-  watch
-} from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ipcRouters } from "../../../electron/core/IpcRouter";
+import BackendUrlUtils from "../../../electron/utils/BackendUrlUtils";
 import ResourceCards from "./ResourceCards.vue";
-import AppIcon from "@/components/AppIcon.vue";
-import { resourceView, toggleTheme } from "@/utils/appearance";
+import RdpHelpDialog from "./RdpHelpDialog.vue";
+import EmptyState from "@/components/EmptyState.vue";
+import LoadingState from "@/components/LoadingState.vue";
+import MIcon from "@/components/MIcon.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import SegmentedControl from "@/components/SegmentedControl.vue";
+import { resolvedTheme, resourceView, toggleTheme } from "@/utils/appearance";
 
-defineComponent({ name: "Home" });
+defineOptions({ name: "Home" });
 
 const { t } = useI18n();
 const appStore = useAppStore();
 const tunnelLoading = ref(false);
+const openingConnection = ref(false);
+const rdpErrorCode = ref<string | null>(null);
+const rdpHelpOpen = computed({
+  get: () => rdpErrorCode.value !== null,
+  set: open => {
+    if (!open) rdpErrorCode.value = null;
+  }
+});
 const authenticating = computed(() => appStore.loginInProgress);
 const loading = computed(
   () =>
@@ -38,11 +45,30 @@ const listen: typeof on = (...args) => {
   return dispose;
 };
 const refreshing = ref(false);
-const operationError = ref("");
+/** 首頁操作（登入、連線、更新授權）失敗的錯誤碼；login＝登入流程，顯示時加上「登入失敗」 */
+const operationError = ref<{ code: string; login?: boolean } | null>(null);
 const query = ref("");
-const filter = ref("all");
+const expandedCourseIds = ref<Set<string>>(new Set());
+const toggleCourse = (id: string) => {
+  const next = new Set(expandedCourseIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  expandedCourseIds.value = next;
+};
 const stopping = ref(false);
-const filters = ["all", "course", "personal"] as const;
+const filters = ["all", "course", "practice", "personal"] as const;
+const filter = ref<(typeof filters)[number]>("all");
+const practiceTitleByRequest = computed(() => {
+  const titles = new Map<string, string>();
+  for (const session of appStore.quickPracticeSessions) {
+    for (const machine of session.machines ?? []) {
+      if (machine.request_id) {
+        titles.set(String(machine.request_id), session.title);
+      }
+    }
+  }
+  return titles;
+});
 const filteredResources = computed(() => {
   const search = query.value.trim().toLowerCase();
   return visibleResources.value.filter(resource =>
@@ -52,6 +78,7 @@ const filteredResources = computed(() => {
       resource.vmid,
       resource.teaching_class_name,
       resource.course_environment_name,
+      practiceTitleByRequest.value.get(String(resource.request_id ?? "")),
       resource.owner_name
     ].some(value =>
       String(value ?? "")
@@ -61,21 +88,51 @@ const filteredResources = computed(() => {
   );
 });
 const filteredGroups = computed(() =>
-  groupResourcesByCourse(filteredResources.value)
+  groupResourcesByCourse(
+    filteredResources.value,
+    appStore.quickPracticeSessions
+  )
 );
+const filteredFolders = computed(() => [
+  ...(filter.value === "all" || filter.value === "course"
+    ? filteredGroups.value.courseGroups
+    : []),
+  ...(filter.value === "all" || filter.value === "practice"
+    ? filteredGroups.value.quickPracticeGroups
+    : [])
+]);
 const counts = computed(() => ({
   all: machineCount.value,
   course: groupedResources.value.courseGroups.reduce(
     (total, group) => total + group.resources.length,
     0
   ),
+  practice: groupedResources.value.quickPracticeGroups.reduce(
+    (total, group) => total + group.resources.length,
+    0
+  ),
   personal: groupedResources.value.personalResources.length
 }));
+/* 分類與檢視切換都是互斥選項：用 web 的 SegmentedControl，數量放徽章 */
+const filterOptions = computed(() =>
+  filters.map(item => ({
+    value: item,
+    label: t(`workspace.${item}`),
+    badge: counts.value[item]
+  }))
+);
+const viewOptions = computed(() => [
+  { value: "grid" as const, icon: "grid_view", ariaLabel: t("workspace.grid") },
+  { value: "list" as const, icon: "view_list", ariaLabel: t("workspace.list") }
+]);
+const clearFilters = () => {
+  query.value = "";
+  filter.value = "all";
+};
 const hasResults = computed(
   () =>
-    (filter.value !== "personal" &&
-      filteredGroups.value.courseGroups.length > 0) ||
-    (filter.value !== "course" &&
+    filteredFolders.value.length > 0 ||
+    ((filter.value === "all" || filter.value === "personal") &&
       filteredGroups.value.personalResources.length > 0)
 );
 const connectionTitle = computed(() =>
@@ -87,9 +144,11 @@ const connectionTitle = computed(() =>
         )
       : status.value === "running"
         ? t(
-            appStore.tunnelStatus.latestHandshakeAt
+            appStore.tunnelStatus.connected
               ? "workspace.connected"
-              : "workspace.waitingGateway"
+              : appStore.tunnelStatus.handshakeUnavailable
+                ? "workspace.tunnelActive"
+                : "workspace.waitingGateway"
           )
         : status.value === "error"
           ? t("home.status.error")
@@ -99,25 +158,51 @@ const connectionHint = computed(() =>
   authenticating.value
     ? t("home.connect.authHint")
     : status.value === "running"
-      ? appStore.tunnelStatus.latestHandshakeAt
+      ? appStore.tunnelStatus.connected
         ? ""
-        : t("workspace.waitingGatewayHint")
+        : t(
+            appStore.tunnelStatus.handshakeUnavailable
+              ? "workspace.tunnelActiveHint"
+              : "workspace.waitingGatewayHint"
+          )
       : t("home.connect.description")
 );
 const displayedError = computed(() => {
-  if (operationError.value) return operationError.value;
-  if (appStore.loginError) {
+  if (appStore.loginErrorCode) {
     return t("login.failure", {
-      error:
-        appStore.loginErrorCode === "B1002"
-          ? t("login.timeout")
-          : appStore.loginError
+      error: describeError(appStore.loginErrorCode)
     });
   }
-  return appStore.tunnelStatus.connectionError;
+  const failure = operationError.value;
+  if (failure) {
+    const reason = describeError(failure.code);
+    return failure.login ? t("login.failure", { error: reason }) : reason;
+  }
+  const { connectionError, connectionErrorCode } = appStore.tunnelStatus;
+  return connectionError ? describeError(connectionErrorCode) : "";
 });
+/** 操作失敗顯示在連線卡下方；登入失效由 store 統一提示一次，這裡不重複 */
+const showOperationError = (
+  code: string,
+  options: { login?: boolean } = {}
+) => {
+  if (code === NOT_LOGGED_IN) return;
+  operationError.value = { code, login: options.login };
+};
 const openWeb = () =>
   send(ipcRouters.SYSTEM.openUrl, { url: appStore.backendUrl });
+
+/* 還沒填學校平台網址：連線區塊換成輸入框；存檔成功、store 拿到網址後才換回「開始連線」 */
+const backendDraft = ref("");
+const backendDraftInvalid = ref(false);
+watch(backendDraft, () => {
+  backendDraftInvalid.value = false;
+});
+const submitBackend = () => {
+  const check = BackendUrlUtils.parse(backendDraft.value);
+  backendDraftInvalid.value = !check.ok;
+  if (check.ok) appStore.saveSettings({ backendUrl: check.url });
+};
 
 const status = computed(() => {
   if (appStore.tunnelStatus.connectionError) return "error";
@@ -147,7 +232,7 @@ const visibleResources = computed(() =>
   appStore.loggedIn ? [...appStore.resources, ...orphanResources.value] : []
 );
 const groupedResources = computed(() =>
-  groupResourcesByCourse(visibleResources.value)
+  groupResourcesByCourse(visibleResources.value, appStore.quickPracticeSessions)
 );
 const machineCount = computed(() => visibleResources.value.length);
 const resourceAclSignature = computed(() =>
@@ -193,7 +278,7 @@ watch(
   running => {
     if (running) {
       if (!stopping.value) tunnelLoading.value = false;
-      operationError.value = "";
+      operationError.value = null;
       appStore.refreshResources();
     }
   }
@@ -202,18 +287,18 @@ watch(
 const startTunnel = () => {
   if (stopping.value) return;
   tunnelLoading.value = true;
-  operationError.value = "";
+  operationError.value = null;
   send(ipcRouters.TUNNEL.start);
 };
 
 const handleConnect = () => {
-  if (loading.value) return;
+  if (loading.value || !appStore.backendConfigured) return;
   if (appStore.loggedIn) {
     startTunnel();
     return;
   }
 
-  operationError.value = "";
+  operationError.value = null;
   appStore.startLogin();
 };
 
@@ -221,7 +306,7 @@ const handleDisconnect = () => {
   if (loading.value) return;
   stopping.value = true;
   tunnelLoading.value = true;
-  operationError.value = "";
+  operationError.value = null;
   send(ipcRouters.TUNNEL.stop);
 };
 
@@ -239,13 +324,19 @@ const refreshAfterNetworkRecovery = () => {
   if (appStore.tunnelStatus.running) refresh();
 };
 
-const openSsh = (target: { host: string; port: number }) => {
-  if (loading.value || status.value !== "running") return;
+const openSsh = (target: { vmid: number; host: string; port: number }) => {
+  if (loading.value || openingConnection.value || status.value !== "running")
+    return;
+  openingConnection.value = true;
+  operationError.value = null;
   send(ipcRouters.SYSTEM.openSsh, target);
 };
 
 const openRdp = (target: { host: string; port: number }) => {
-  if (loading.value || status.value !== "running") return;
+  if (loading.value || openingConnection.value || status.value !== "running")
+    return;
+  openingConnection.value = true;
+  operationError.value = null;
   send(ipcRouters.SYSTEM.openRdp, target);
 };
 
@@ -255,9 +346,9 @@ onMounted(() => {
     () => {
       tunnelLoading.value = false;
     },
-    (_code, message) => {
+    code => {
       tunnelLoading.value = false;
-      operationError.value = message;
+      showOperationError(code);
     }
   );
   listen(
@@ -267,9 +358,9 @@ onMounted(() => {
       if (data) appStore.tunnelStatus = data;
       appStore.refreshResources();
     },
-    (_code, message) => {
+    code => {
       refreshing.value = false;
-      operationError.value = message;
+      showOperationError(code);
     }
   );
   listen(
@@ -279,22 +370,33 @@ onMounted(() => {
       tunnelLoading.value = false;
       send(ipcRouters.TUNNEL.getStatus);
     },
-    (_code, message) => {
+    code => {
       stopping.value = false;
       tunnelLoading.value = false;
-      operationError.value = message;
+      showOperationError(code);
+      /* 中斷失敗時主程序記下原因，馬上拉狀態讓連線卡顯示 */
+      send(ipcRouters.TUNNEL.getStatus);
     }
   );
-  listen(
-    ipcRouters.SYSTEM.openSsh,
-    () => undefined,
-    (_code, message) => ElMessage.error(message)
-  );
-  listen(
-    ipcRouters.SYSTEM.openRdp,
-    () => undefined,
-    (_code, message) => ElMessage.error(message)
-  );
+  for (const route of [ipcRouters.SYSTEM.openSsh, ipcRouters.SYSTEM.openRdp]) {
+    listen(
+      route,
+      () => {
+        openingConnection.value = false;
+      },
+      code => {
+        openingConnection.value = false;
+        if (
+          route === ipcRouters.SYSTEM.openRdp &&
+          (code === "B1019" || code === "B1020")
+        ) {
+          rdpErrorCode.value = code;
+          return;
+        }
+        showOperationError(code);
+      }
+    );
+  }
 
   refresh();
   window.addEventListener("online", refreshAfterNetworkRecovery);
@@ -311,40 +413,86 @@ onUnmounted(() => {
 </script>
 <template>
   <main class="workspace-page">
-    <header class="workspace-heading">
-      <h1>{{ t("resources.webTitle") }}</h1>
-      <div class="workspace-heading-actions">
-        <button
-          class="sl-button"
-          :disabled="refreshing || appStore.resourcesLoading || loading"
-          @click="refresh"
+    <PageHeader :title="t('resources.webTitle')">
+      <button
+        type="button"
+        class="sl-btn-secondary"
+        :disabled="refreshing || appStore.resourcesLoading || loading"
+        @click="refresh"
+      >
+        <MIcon
+          name="refresh"
+          :size="16"
+          :spin="refreshing || appStore.resourcesLoading"
+        />{{ t("common.refresh") }}
+      </button>
+      <button
+        type="button"
+        class="sl-btn-icon-secondary"
+        :aria-label="t('workspace.toggleTheme')"
+        :title="t('workspace.toggleTheme')"
+        @click="toggleTheme"
+      >
+        <MIcon
+          :name="resolvedTheme === 'dark' ? 'light_mode' : 'dark_mode'"
+          :size="18"
+        />
+      </button>
+    </PageHeader>
+
+    <form
+      v-if="!appStore.backendConfigured"
+      class="backend-setup"
+      novalidate
+      @submit.prevent="submitBackend"
+    >
+      <MIcon name="school" :size="24" />
+      <div class="connection-copy backend-setup__body">
+        <h2>{{ t("home.backendSetup.title") }}</h2>
+        <p>{{ t("home.backendSetup.description") }}</p>
+        <div class="backend-setup__row">
+          <input
+            v-model="backendDraft"
+            class="sl-input"
+            :class="{ 'sl-input--invalid': backendDraftInvalid }"
+            type="url"
+            :placeholder="t('config.backend.placeholder')"
+            :aria-label="t('config.backend.label')"
+            :aria-invalid="backendDraftInvalid"
+            aria-describedby="backend-setup-error"
+            spellcheck="false"
+          />
+          <button
+            type="submit"
+            class="sl-btn-primary"
+            :disabled="!backendDraft.trim() || appStore.settingsSaving"
+          >
+            {{ t("home.backendSetup.button") }}
+          </button>
+        </div>
+        <small
+          v-if="backendDraftInvalid"
+          id="backend-setup-error"
+          class="sl-field__hint sl-field__hint--error"
+          role="alert"
+          >{{ t("home.backendSetup.invalid") }}</small
         >
-          <AppIcon
-            name="refresh"
-            :class="{ 'sl-spin': refreshing || appStore.resourcesLoading }"
-          />{{ t("common.refresh") }}</button
-        ><button
-          class="sl-icon-button"
-          :aria-label="t('workspace.toggleTheme')"
-          :title="t('workspace.toggleTheme')"
-          @click="toggleTheme"
-        >
-          <AppIcon name="sun" />
-        </button>
       </div>
-    </header>
+    </form>
     <section
+      v-else
       class="connection-banner"
-      :class="{ 'connection-banner--error': !!displayedError }"
+      :class="{ 'connection-banner--error': status === 'error' }"
       :aria-label="t('workspace.connectionInfo')"
       aria-live="polite"
     >
-      <AppIcon
-        :name="loading ? 'refresh' : 'shield'"
+      <MIcon
+        :name="loading ? 'autorenew' : 'shield'"
+        :size="24"
+        :spin="loading"
         :class="{
-          'sl-spin': loading,
           'is-running':
-            status === 'running' && !!appStore.tunnelStatus.latestHandshakeAt
+            status === 'running' && !!appStore.tunnelStatus.connected
         }"
       />
       <div class="connection-copy">
@@ -352,8 +500,8 @@ onUnmounted(() => {
         <p v-if="connectionHint">{{ connectionHint }}</p>
       </div>
       <button
-        class="sl-button"
-        :class="{ 'sl-button--primary': status !== 'running' }"
+        type="button"
+        :class="status === 'running' ? 'sl-btn-secondary' : 'sl-btn-primary'"
         :disabled="loading"
         @click="status === 'running' ? handleDisconnect() : handleConnect()"
       >
@@ -369,128 +517,118 @@ onUnmounted(() => {
       </button>
       <button
         v-if="authenticating"
-        class="sl-button"
+        class="sl-btn-secondary"
         @click="appStore.cancelLogin()"
       >
         {{ t("login.cancelButton") }}
       </button>
     </section>
-    <el-alert
-      v-if="displayedError"
-      class="workspace-alert"
-      :title="displayedError"
-      type="error"
-      show-icon
-      :closable="false"
-    />
-    <el-alert
+
+    <p v-if="displayedError" class="sl-notice sl-notice--danger" role="alert">
+      <MIcon name="error_outline" :size="18" />{{ displayedError }}
+    </p>
+    <p
       v-if="appStore.tunnelStatus.leaseRefreshError && status === 'running'"
-      class="workspace-alert"
-      :title="t('home.status.leaseRefreshFailed')"
-      :description="appStore.tunnelStatus.leaseRefreshError"
-      type="warning"
-      show-icon
-      :closable="false"
-    />
-    <el-alert
-      v-if="appStore.resourcesError"
-      class="workspace-alert"
-      :title="t('workspace.resourceError')"
-      :description="appStore.resourcesError"
-      type="error"
-      show-icon
-      :closable="false"
-    />
-    <el-alert
+      class="sl-notice sl-notice--pending"
+    >
+      <MIcon name="warning_amber" :size="18" />{{
+        t("home.status.leaseRefreshFailed")
+      }}
+    </p>
+    <p v-if="appStore.resourcesErrorCode" class="sl-notice sl-notice--danger">
+      <MIcon name="error_outline" :size="18" />
+      <span
+        >{{ t("workspace.resourceError")
+        }}<small>{{ describeError(appStore.resourcesErrorCode) }}</small></span
+      >
+    </p>
+    <p
       v-if="
         status === 'running' &&
         !appStore.tunnelStatus.tunnels.length &&
         !appStore.resourcesLoading
       "
-      class="workspace-alert"
-      :title="t('home.machines.noTargets')"
-      type="warning"
-      show-icon
-      :closable="false"
-    />
+      class="sl-notice sl-notice--pending"
+    >
+      <MIcon name="warning_amber" :size="18" />{{
+        t("home.machines.noTargets")
+      }}
+    </p>
+
     <template v-if="appStore.loggedIn">
       <div class="resource-toolbar">
-        <div
-          class="resource-filters"
-          role="group"
-          :aria-label="t('workspace.filter')"
+        <SegmentedControl
+          v-model="filter"
+          :options="filterOptions"
+          :label="t('workspace.filter')"
+        />
+        <div class="resource-toolbar__end">
+          <label class="resource-search">
+            <MIcon name="search" :size="18" />
+            <input
+              v-model="query"
+              type="search"
+              :placeholder="t('workspace.search')"
+              :aria-label="t('workspace.search')"
+            />
+          </label>
+          <SegmentedControl
+            v-model="resourceView"
+            :options="viewOptions"
+            :label="t('workspace.view')"
+          />
+        </div>
+      </div>
+
+      <LoadingState v-if="appStore.resourcesLoading && !machineCount" />
+      <template v-else>
+        <section
+          v-for="group in filteredFolders"
+          :key="group.id"
+          class="workspace-section"
         >
           <button
-            v-for="item in filters"
-            :key="item"
-            :class="{ active: filter === item }"
-            :aria-pressed="filter === item"
-            @click="filter = item"
+            type="button"
+            class="course-folder__toggle"
+            :aria-expanded="expandedCourseIds.has(group.id)"
+            @click="toggleCourse(group.id)"
           >
-            {{ t(`workspace.${item}`) }} <span>{{ counts[item] }}</span>
+            <MIcon name="folder" />
+            <span class="course-folder__name">{{
+              group.title || t("workspace.unnamedCourse")
+            }}</span>
+            <span class="course-folder__meta">{{
+              t("workspace.machineCount", { count: group.resources.length })
+            }}</span>
+            <span class="sl-badge sl-badge--success">{{
+              t("resources.course.runningCount", {
+                running: group.runningCount,
+                total: group.resources.length
+              })
+            }}</span>
+            <MIcon
+              name="expand_more"
+              class="course-folder__chevron"
+              :class="{ 'is-open': expandedCourseIds.has(group.id) }"
+            />
           </button>
-        </div>
-        <label class="resource-search"
-          ><AppIcon name="search" /><input
-            v-model="query"
-            :placeholder="t('workspace.search')"
-            :aria-label="t('workspace.search')"
-        /></label>
-        <div class="resource-views">
-          <button
-            class="sl-icon-button"
-            :class="{ active: resourceView === 'grid' }"
-            :aria-label="t('workspace.grid')"
-            :title="t('workspace.grid')"
-            :aria-pressed="resourceView === 'grid'"
-            @click="resourceView = 'grid'"
-          >
-            <AppIcon name="grid" /></button
-          ><button
-            class="sl-icon-button"
-            :class="{ active: resourceView === 'list' }"
-            :aria-label="t('workspace.list')"
-            :title="t('workspace.list')"
-            :aria-pressed="resourceView === 'list'"
-            @click="resourceView = 'list'"
-          >
-            <AppIcon name="list" />
-          </button>
-        </div>
-      </div>
-      <div
-        v-if="appStore.resourcesLoading && !machineCount"
-        class="workspace-empty"
-        role="status"
-      >
-        {{ t("common.loading") }}
-      </div>
-      <template v-else>
-        <template v-if="filter !== 'personal'"
-          ><section
-            v-for="group in filteredGroups.courseGroups"
-            :key="group.id"
-            class="resource-group"
-          >
-            <header>
-              <h2>{{ group.title }}</h2>
-              <span>{{
-                t("workspace.machineCount", { count: group.resources.length })
-              }}</span>
-            </header>
-            <ResourceCards
-              :resources="group.resources"
-              :tunnels="appStore.tunnelStatus.tunnels"
-              :connected="status === 'running'"
-              :busy="loading"
-              :view="resourceView"
-              @ssh="openSsh"
-              @rdp="openRdp"
-            /></section
-        ></template>
+          <ResourceCards
+            v-if="expandedCourseIds.has(group.id)"
+            :resources="group.resources"
+            :tunnels="appStore.tunnelStatus.tunnels"
+            :connected="status === 'running'"
+            :busy="loading || openingConnection"
+            :view="resourceView"
+            @ssh="openSsh"
+            @rdp="openRdp"
+          />
+        </section>
         <section
-          v-if="filter !== 'course' && filteredGroups.personalResources.length"
-          class="resource-group"
+          v-if="
+            (filter === 'all' || filter === 'personal') &&
+            filteredGroups.personalResources.length
+          "
+          class="workspace-section resource-group"
         >
           <header>
             <h2>{{ t("resources.personal.title") }}</h2>
@@ -504,28 +642,49 @@ onUnmounted(() => {
             :resources="filteredGroups.personalResources"
             :tunnels="appStore.tunnelStatus.tunnels"
             :connected="status === 'running'"
-            :busy="loading"
+            :busy="loading || openingConnection"
             :view="resourceView"
             @ssh="openSsh"
             @rdp="openRdp"
           />
         </section>
-        <div
-          v-if="!hasResults && !appStore.resourcesError"
-          class="workspace-empty"
+        <EmptyState
+          v-if="!hasResults && !appStore.resourcesErrorCode && machineCount"
+          icon="search_off"
+          :title="t('workspace.noMatches')"
         >
-          <p>
-            {{ t(machineCount ? "workspace.noMatches" : "resources.empty") }}
-          </p>
-          <button v-if="!machineCount" class="sl-button" @click="openWeb">
-            {{ t("workspace.openWeb") }}
-          </button>
-        </div>
+          <template #action>
+            <button
+              type="button"
+              class="sl-btn-secondary"
+              @click="clearFilters"
+            >
+              <MIcon name="filter_alt_off" :size="16" />{{
+                t("workspace.clearFilters")
+              }}
+            </button>
+          </template>
+        </EmptyState>
+        <EmptyState
+          v-else-if="!hasResults && !appStore.resourcesErrorCode"
+          icon="dns"
+          :title="t('resources.empty')"
+        >
+          <template #action>
+            <button type="button" class="sl-btn-secondary" @click="openWeb">
+              <MIcon name="open_in_new" :size="16" />{{
+                t("workspace.openWeb")
+              }}
+            </button>
+          </template>
+        </EmptyState>
       </template>
     </template>
-    <div v-else class="workspace-empty">
-      <AppIcon name="monitor" />
-      <p>{{ t("home.empty.notLoggedIn") }}</p>
-    </div>
+    <EmptyState
+      v-else-if="appStore.backendConfigured"
+      icon="cloud_off"
+      :title="t('home.empty.notLoggedIn')"
+    />
   </main>
+  <RdpHelpDialog v-model="rdpHelpOpen" :error-code="rdpErrorCode" />
 </template>

@@ -28,6 +28,7 @@ import SettingsService from "../service/SettingsService";
 import SystemService from "../service/SystemService";
 import WireGuardTunnelService from "../service/WireGuardTunnelService";
 import UpdateService from "../service/UpdateService";
+import { localize } from "../utils/LocaleUtils";
 
 process.env.DIST_ELECTRON = join(__dirname, "..");
 process.env.DIST = join(process.env.DIST_ELECTRON, "../dist");
@@ -41,6 +42,7 @@ const indexHtml = join(process.env.DIST, "index.html");
 
 class SkyLabApp {
   private _win: BrowserWindow | null = null;
+  private _tray: Tray | null = null;
   private _quitting = false;
   private _cleanupInProgress = false;
   private _cleanupComplete = false;
@@ -75,8 +77,8 @@ class SkyLabApp {
       icon: join(
         process.env.VITE_PUBLIC,
         process.platform === "win32"
-          ? "logo/pack/icon.ico"
-          : "logo/pack/512x512.png"
+          ? "logo/pixel-octo/icon.ico"
+          : "logo/pixel-octo/512x512.png"
       ),
       width: 960,
       height: 640,
@@ -104,76 +106,86 @@ class SkyLabApp {
         new Date().toLocaleString()
       );
     });
+    // 新視窗一律擋下；白名單內的網址（GitHub、使用者填的學校平台）改用系統瀏覽器開
     this._win.webContents.setWindowOpenHandler(({ url }) => {
-      // 一律不在 app 內開新視窗。能不能用系統瀏覽器開，交給 SystemService.openUrl
-      // 用同一套規則判斷：設定頁填的後端 origin、預設後端與 GitHub 下載網址。
+      const settingsService: SettingsService =
+        BeanFactory.getBean("settingsService");
       const systemService: SystemService = BeanFactory.getBean("systemService");
-      systemService.openUrl(url).catch((error: Error) => {
-        Logger.warn("SkyLabApp.windowOpenHandler", error.message);
-      });
+      settingsService
+        .getBackendUrl()
+        .catch(() => undefined)
+        .then(backendUrl => systemService.openUrl(url, backendUrl))
+        .catch(() => {
+          // Invalid or disallowed URLs stay closed.
+        });
       return { action: "deny" };
     });
     this._win.webContents.on("will-navigate", event => {
       event.preventDefault();
     });
 
-    if (process.platform === "darwin") {
-      Menu.setApplicationMenu(
-        Menu.buildFromTemplate([
-          { role: "appMenu" },
-          { role: "editMenu" },
-          { role: "windowMenu" }
-        ])
-      );
-    } else {
-      Menu.setApplicationMenu(null);
-      (this._win as any).on("minimize", (event: any) => {
-        event.preventDefault();
-        this._win?.hide();
-      });
-    }
+    // macOS 需要應用程式選單，否則複製、貼上與關閉視窗等快捷鍵都會失效
+    Menu.setApplicationMenu(
+      process.platform === "darwin"
+        ? Menu.buildFromTemplate([
+            { role: "appMenu" },
+            { role: "editMenu" },
+            { role: "windowMenu" }
+          ])
+        : null
+    );
+
+    this._win.on("minimize", () => {
+      Logger.info("SkyLabApp.window", "Window minimized to taskbar");
+    });
 
     this._win.on("close", event => {
       if (!this._quitting) {
         event.preventDefault();
+        Logger.info("SkyLabApp.window", "Window closed to tray");
         this._win?.hide();
       }
-      return false;
     });
 
     Logger.info("SkyLabApp.initializeWindow", "Window initialized.");
   }
 
   async initializeTray() {
+    if (this._tray) return;
     const settingsService: SettingsService =
       BeanFactory.getBean("settingsService");
     const language = await settingsService.getLanguage();
-    const labels =
-      language === "ja"
-        ? { show: "表示", quit: "終了" }
-        : language === "zh-TW"
-          ? { show: "顯示", quit: "結束" }
-          : { show: "Show", quit: "Quit" };
     const menu: Array<MenuItemConstructorOptions | MenuItem> = [
       {
-        label: labels.show,
+        label: localize(language, {
+          "zh-TW": "顯示",
+          "en-US": "Show",
+          ja: "表示"
+        }),
         click: () => {
           this._win?.show();
         }
       },
       {
-        label: labels.quit,
+        label: localize(language, {
+          "zh-TW": "結束",
+          "en-US": "Quit",
+          ja: "終了"
+        }),
         click: () => {
           this.quitSafely();
         }
       }
     ];
-    const tray = new Tray(
-      node_path.join(process.env.VITE_PUBLIC, "logo/only/16x16.png")
+    this._tray = new Tray(
+      node_path.join(process.env.VITE_PUBLIC, "logo/pixel-octo/16x16.png")
     );
-    tray.setToolTip(app.getName());
-    tray.setContextMenu(Menu.buildFromTemplate(menu));
-    tray.on("double-click", () => this._win?.show());
+    this._tray.setToolTip(app.getName());
+    this._tray.setContextMenu(Menu.buildFromTemplate(menu));
+    this._tray.on("click", () => {
+      this._win?.show();
+      this._win?.focus();
+    });
     Logger.info("SkyLabApp.initializeTray", "Tray initialized.");
   }
 

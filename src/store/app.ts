@@ -1,24 +1,40 @@
-﻿import { on, onListener, send } from "@/utils/ipcUtils";
+﻿import { describeError, NOT_LOGGED_IN, toastError } from "@/utils/errors";
+import { on, onListener, send } from "@/utils/ipcUtils";
+import { ElMessage } from "element-plus";
 import { defineStore } from "pinia";
 import { ipcRouters, listeners } from "../../electron/core/IpcRouter";
-import GlobalConstant from "../../electron/core/GlobalConstant";
+import BackendUrlUtils from "../../electron/utils/BackendUrlUtils";
 import router from "../router";
 
 interface AppState {
   loggedIn: boolean;
   loginInProgress: boolean;
-  loginError: string;
   loginErrorCode: string;
   connectionStarting: boolean;
   language: string;
   autoStart: boolean;
+  /** 學校平台網址；空字串＝還沒填（首頁改顯示輸入框，見 backendConfigured） */
   backendUrl: string;
+  /** 設定存檔進行中（換後端網址時含先登出），設定頁據此停用儲存鈕 */
+  settingsSaving: boolean;
+  settingsErrorCode: string;
+  queuedSettingsPatch: SkyLabSettingsPatch | null;
   resourcesLoading: boolean;
-  resourcesError: string;
-  /** 背景輪詢連不上後端；顯示常駐提示，下次成功就清掉（不跳錯誤訊息）。 */
+  /** 載入資源失敗的錯誤碼（畫面用 describeError 翻譯），空字串＝沒有錯誤 */
+  resourcesErrorCode: string;
+  /** 背景輪詢連不上後端：側欄常駐提示，下次成功就清掉（不跳錯誤訊息） */
   serverUnreachable: boolean;
+  updateInfo: SkyLabUpdateInfo | null;
+  updateChecking: boolean;
+  updateCheckError: boolean;
+  updateCheckedAt: number;
+  updateInstalling: boolean;
+  updateProgress: SkyLabUpdateProgress | null;
+  /** 安裝更新失敗的錯誤碼，空字串＝沒有錯誤 */
+  updateInstallErrorCode: string;
   tunnelStatus: TunnelStatusInfo;
   resources: SkyLabResource[];
+  quickPracticeSessions: SkyLabQuickPracticeSession[];
   sessionStatuses: SkyLabSessionStatus[];
   /** vmids the user already snoozed so we don't re-pop while still warning. */
   dismissedWarnings: number[];
@@ -37,11 +53,15 @@ const DEFAULT_TUNNEL_STATUS: TunnelStatusInfo = {
  * (which is itself anchored to the backend's 30 min ``practice_warning_minutes``). */
 const SESSION_POLL_INTERVAL_MS = 30_000;
 const RESOURCE_REFRESH_INTERVAL_MS = 60_000;
+const UPDATE_POLL_INTERVAL_MS = 60 * 60_000;
 const LS_KEY = "session_warning_dismissed";
 let sessionPollTimer: ReturnType<typeof setInterval> | null = null;
+let updatePollTimer: ReturnType<typeof setInterval> | null = null;
 let authExpiryListenerRegistered = false;
 let lastResourceRefreshAt = 0;
 const registeredStores = new WeakSet<object>();
+/** 等登出回覆後才送出的設定（換後端網址時，見 saveSettings） */
+let pendingSettingsPatch: SkyLabSettingsPatch | null = null;
 
 function loadPermanentDismissals(): Record<number, string> {
   try {
@@ -70,22 +90,36 @@ export const useAppStore = defineStore("app", {
   state: (): AppState => ({
     loggedIn: false,
     loginInProgress: false,
-    loginError: "",
     loginErrorCode: "",
     connectionStarting: false,
     language: "zh-TW",
     autoStart: false,
-    backendUrl: GlobalConstant.DEFAULT_BACKEND_URL,
+    backendUrl: "",
+    settingsSaving: false,
+    settingsErrorCode: "",
+    queuedSettingsPatch: null,
     resourcesLoading: false,
-    resourcesError: "",
+    resourcesErrorCode: "",
     serverUnreachable: false,
+    updateInfo: null,
+    updateChecking: false,
+    updateCheckError: false,
+    updateCheckedAt: 0,
+    updateInstalling: false,
+    updateProgress: null,
+    updateInstallErrorCode: "",
     tunnelStatus: { ...DEFAULT_TUNNEL_STATUS },
     resources: [],
+    quickPracticeSessions: [],
     sessionStatuses: [],
     dismissedWarnings: [],
     permanentDismissals: loadPermanentDismissals()
   }),
   getters: {
+    /** 已填學校平台網址；沒填時不能連線、不能開網頁版 */
+    backendConfigured(state): boolean {
+      return BackendUrlUtils.parse(state.backendUrl).ok;
+    },
     /** First not-yet-dismissed warning, used to drive the global alert. */
     activeWarning(state): SkyLabSessionStatus | null {
       return (
@@ -103,15 +137,12 @@ export const useAppStore = defineStore("app", {
     registerListeners() {
       if (registeredStores.has(this)) return;
       registeredStores.add(this);
-      // Own the auth flow for the lifetime of the app, including navigation
-      // away from Home while the browser is waiting for approval.
       on(
         ipcRouters.AUTH.startLogin,
         () => {},
-        (code, message) => {
+        code => {
           if (!this.loginInProgress) return;
           this.loginInProgress = false;
-          this.loginError = message;
           this.loginErrorCode = code;
         }
       );
@@ -126,7 +157,6 @@ export const useAppStore = defineStore("app", {
         )
           return;
         this.loginInProgress = false;
-        this.loginError = "";
         this.loginErrorCode = "";
         if (payload.type === "login-success") {
           this.loggedIn = true;
@@ -134,8 +164,7 @@ export const useAppStore = defineStore("app", {
           this.connectionStarting = true;
           send(ipcRouters.TUNNEL.start);
         } else if (payload.type === "login-failure") {
-          this.loginError = payload.error || "unknown";
-          this.loginErrorCode = payload.code || "B1000";
+          this.loginErrorCode = payload.errorCode || "B1000";
         }
       });
       on(
@@ -144,11 +173,13 @@ export const useAppStore = defineStore("app", {
           this.connectionStarting = false;
           send(ipcRouters.TUNNEL.getStatus);
         },
-        (_code, message) => {
+        code => {
           this.connectionStarting = false;
+          if (code === NOT_LOGGED_IN) return;
           this.tunnelStatus = {
             ...this.tunnelStatus,
-            connectionError: message
+            connectionError: describeError(code),
+            connectionErrorCode: code
           };
         }
       );
@@ -165,48 +196,125 @@ export const useAppStore = defineStore("app", {
         this.loggedIn = !!data.loggedIn;
         this.loginInProgress = !!data.loginInProgress;
       });
-      on(ipcRouters.AUTH.logout, () => {
-        this.loggedIn = false;
-        this.resources = [];
-        this.resourcesLoading = false;
-        this.resourcesError = "";
-        this.loginInProgress = false;
-        this.loginError = "";
-        this.loginErrorCode = "";
-        this.connectionStarting = false;
-        this.tunnelStatus = { ...DEFAULT_TUNNEL_STATUS };
-        this.stopSessionPolling();
-        if (router.currentRoute.value.name !== "Home") {
-          void router.replace({ name: "Home" });
+      on(
+        ipcRouters.AUTH.logout,
+        () => {
+          this.loggedIn = false;
+          this.resources = [];
+          this.quickPracticeSessions = [];
+          this.resourcesLoading = false;
+          this.resourcesErrorCode = "";
+          this.loginInProgress = false;
+          this.loginErrorCode = "";
+          this.connectionStarting = false;
+          this.tunnelStatus = { ...DEFAULT_TUNNEL_STATUS };
+          this.stopSessionPolling();
+          /* 換網址觸發的登出：舊伺服器的通道與 token 都收掉了，現在才存新網址；留在設定頁看結果 */
+          if (pendingSettingsPatch) {
+            const patch = pendingSettingsPatch;
+            pendingSettingsPatch = null;
+            send(ipcRouters.SETTINGS.saveSettings, patch);
+            return;
+          }
+          if (router.currentRoute.value.name !== "Home") {
+            void router.replace({ name: "Home" });
+          }
+        },
+        code => {
+          const wasSaving = this.settingsSaving;
+          pendingSettingsPatch = null;
+          this.settingsSaving = false;
+          this.queuedSettingsPatch = null;
+          if (wasSaving) {
+            this.settingsErrorCode = code;
+            this.refreshSettings();
+          }
+          if (!wasSaving || router.currentRoute.value.name !== "Config")
+            toastError(code);
         }
-      });
+      );
       on(ipcRouters.SETTINGS.getSettings, data => {
-        if (data) {
+        if (data && !this.settingsSaving) {
           this.language = data.language || "zh-TW";
           this.autoStart = !!data.launchAtStartup;
-          this.backendUrl = data.backendUrl || this.backendUrl;
+          this.backendUrl = data.backendUrl || "";
         }
       });
-      on(ipcRouters.SETTINGS.saveSettings, data => {
-        if (data) {
-          this.language = data.language || this.language;
-          this.autoStart = !!data.launchAtStartup;
-          this.backendUrl = data.backendUrl || this.backendUrl;
+      on(
+        ipcRouters.SETTINGS.saveSettings,
+        data => {
+          const queued = this.queuedSettingsPatch;
+          this.queuedSettingsPatch = null;
+          this.settingsSaving = false;
+          if (data) {
+            this.language = queued?.language || data.language || this.language;
+            this.autoStart = queued?.launchAtStartup ?? !!data.launchAtStartup;
+            this.backendUrl = data.backendUrl || "";
+          }
+          if (queued) this.saveSettings(queued);
+        },
+        /* 存檔失敗：設定頁會顯示原因；這裡把先行套用的語言／開機啟動拉回實際存著的值 */
+        code => {
+          this.settingsSaving = false;
+          this.settingsErrorCode = code;
+          this.queuedSettingsPatch = null;
+          if (router.currentRoute.value.name !== "Config") toastError(code);
+          this.refreshSettings();
         }
+      );
+      on(
+        ipcRouters.UPDATE.check,
+        (info: SkyLabUpdateInfo | null) => {
+          this.updateChecking = false;
+          this.updateCheckError = !info;
+          if (info) {
+            this.updateInfo = info;
+            this.updateCheckedAt = Date.now();
+          }
+        },
+        () => {
+          this.updateChecking = false;
+          this.updateCheckError = true;
+        }
+      );
+      on(
+        ipcRouters.UPDATE.install,
+        () => {
+          this.updateInstalling = false;
+        },
+        code => {
+          this.updateInstalling = false;
+          this.updateInstallErrorCode = code;
+        }
+      );
+      onListener(listeners.updateProgress, (progress: SkyLabUpdateProgress) => {
+        this.updateProgress = progress;
       });
       on(
         ipcRouters.RESOURCE.listMyResources,
         data => {
           this.resourcesLoading = false;
-          this.resourcesError = "";
+          this.resourcesErrorCode = "";
           this.serverUnreachable = false;
           if (!this.loggedIn) return;
           this.resources = Array.isArray(data) ? data : [];
           lastResourceRefreshAt = Date.now();
         },
-        (_code, message) => {
+        code => {
           this.resourcesLoading = false;
-          this.resourcesError = message;
+          /* 登入失效時 store 已登出並清掉清單，不再另外顯示載入失敗 */
+          if (!this.loggedIn) return;
+          this.resourcesErrorCode = code;
+        }
+      );
+      on(
+        ipcRouters.RESOURCE.listMyQuickPracticeSessions,
+        data => {
+          if (!this.loggedIn) return;
+          this.quickPracticeSessions = Array.isArray(data) ? data : [];
+        },
+        () => {
+          this.quickPracticeSessions = [];
         }
       );
       on(
@@ -240,16 +348,24 @@ export const useAppStore = defineStore("app", {
             this.refreshResources();
           }
         },
-        bizCode => {
-          // 背景輪詢每 30 秒一次：後端暫時連不上時不跳錯誤訊息（否則每 30 秒
-          // 一則），改成常駐提示並照常重試。登入過期另由 skylab:auth-expired 處理。
-          if (bizCode !== "B1001") this.serverUnreachable = true;
+        /* 背景輪詢：失敗就保留上一次的狀態，不跳 toast（離線時才不會每 30 秒跳一次），
+           改在側欄常駐「暫時連不上伺服器」；登入過期另由 skylab:auth-expired 處理 */
+        code => {
+          if (code !== NOT_LOGGED_IN) this.serverUnreachable = true;
         }
       );
       on(ipcRouters.SESSION.extendSession, () => {
         // Refresh statuses immediately so the dialog dismisses naturally.
         this.refreshSessionStatuses();
       });
+      /* 開網址／資料夾／授權聲明只在失敗時需要回饋；集中在這裡監聽，避免多個頁面重複跳 toast */
+      for (const router of [
+        ipcRouters.SYSTEM.openUrl,
+        ipcRouters.SYSTEM.openAppData,
+        ipcRouters.SYSTEM.openThirdPartyNotices
+      ]) {
+        on(router, () => undefined);
+      }
       onListener(listeners.watchTunnel, (data: TunnelStatusInfo) => {
         this.tunnelStatus = data;
       });
@@ -259,26 +375,73 @@ export const useAppStore = defineStore("app", {
     },
     startLogin() {
       if (this.loginInProgress) return;
-      this.loginError = "";
       this.loginErrorCode = "";
-      this.tunnelStatus = { ...this.tunnelStatus, connectionError: null };
+      this.tunnelStatus = {
+        ...this.tunnelStatus,
+        connectionError: null,
+        connectionErrorCode: null
+      };
       this.loginInProgress = true;
       send(ipcRouters.AUTH.startLogin);
     },
     cancelLogin() {
       this.loginInProgress = false;
-      this.loginError = "";
       this.loginErrorCode = "";
       send(ipcRouters.AUTH.cancelLogin);
     },
     refreshSettings() {
       send(ipcRouters.SETTINGS.getSettings);
     },
+    /**
+     * 設定頁按儲存：語言、開機自動啟動先套用到畫面再存檔（失敗時由 saveSettings 的錯誤處理拉回）。
+     * 有換後端網址、且已登入或通道開著時，要先在舊伺服器登出（停通道、撤銷 token），回覆後才存：
+     * 反過來的話，主程序存網址時會先清掉 token，登出就看不到 token、不會去停通道。
+     */
+    saveSettings(patch: SkyLabSettingsPatch) {
+      if (patch.language) this.language = patch.language;
+      if (typeof patch.launchAtStartup === "boolean") {
+        this.autoStart = patch.launchAtStartup;
+      }
+      if (this.settingsSaving) {
+        this.queuedSettingsPatch = { ...this.queuedSettingsPatch, ...patch };
+        return;
+      }
+      this.settingsSaving = true;
+      this.settingsErrorCode = "";
+      if (patch.backendUrl && (this.loggedIn || this.tunnelStatus.running)) {
+        pendingSettingsPatch = patch;
+        this.logout();
+      } else {
+        send(ipcRouters.SETTINGS.saveSettings, patch);
+      }
+    },
+    checkForUpdates(force = false) {
+      if (this.updateChecking || this.updateInstalling) return;
+      if (!force && Date.now() - this.updateCheckedAt < 5 * 60_000) return;
+      this.updateChecking = true;
+      this.updateCheckError = false;
+      send(ipcRouters.UPDATE.check);
+    },
+    startUpdatePolling() {
+      if (updatePollTimer) return;
+      this.checkForUpdates();
+      updatePollTimer = setInterval(() => {
+        this.checkForUpdates(true);
+      }, UPDATE_POLL_INTERVAL_MS);
+    },
+    installUpdate() {
+      if (this.updateInstalling || !this.updateInfo?.updateAvailable) return;
+      this.updateInstalling = true;
+      this.updateProgress = null;
+      this.updateInstallErrorCode = "";
+      send(ipcRouters.UPDATE.install);
+    },
     refreshResources() {
       if (!this.loggedIn || this.resourcesLoading) return;
       this.resourcesLoading = true;
-      this.resourcesError = "";
+      this.resourcesErrorCode = "";
       send(ipcRouters.RESOURCE.listMyResources);
+      send(ipcRouters.RESOURCE.listMyQuickPracticeSessions);
     },
     refreshSessionStatuses() {
       if (!this.loggedIn) return;
@@ -318,15 +481,17 @@ export const useAppStore = defineStore("app", {
       this.serverUnreachable = false;
     },
     handleSessionExpired() {
-      // 只在這次過期時停一次通道：token 已清掉後 tunnel/stop 向後端 disconnect
-      // 也會回 B1001，若每次都再送 stop 就會無限循環打後端、狂跳錯誤訊息。
+      /* 同時失敗的請求都會走到這裡，只在第一次（還是登入狀態時）提示 */
       const wasLoggedIn = this.loggedIn;
+      if (wasLoggedIn) ElMessage.warning(describeError(NOT_LOGGED_IN));
       this.loggedIn = false;
       this.loginInProgress = false;
+      this.loginErrorCode = "";
       this.connectionStarting = false;
       this.resources = [];
+      this.quickPracticeSessions = [];
       this.resourcesLoading = false;
-      this.resourcesError = "";
+      this.resourcesErrorCode = "";
       this.stopSessionPolling();
       if (wasLoggedIn) send(ipcRouters.TUNNEL.stop);
       if (router.currentRoute.value.name !== "Home") {

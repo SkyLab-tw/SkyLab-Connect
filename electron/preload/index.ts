@@ -89,7 +89,7 @@ function useLoading() {
     radial-gradient(ellipse 100% 80% at 0% 90%, #feffed 0%, transparent 100%),
     radial-gradient(ellipse 150% 70% at 100% 100%, #edfff6 0%, transparent 100%),
     #e8f0fd;
-  font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: "Segoe UI", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
   transition: opacity 220ms ease, visibility 220ms ease;
 }
 .app-loading-wrap.is-leaving {
@@ -111,57 +111,13 @@ function useLoading() {
   backdrop-filter: blur(14px) saturate(1.2);
   text-align: center;
 }
-.app-loading-cubes {
-  position: relative;
-  width: 112px;
-  height: 92px;
-  margin-bottom: 12px;
-  perspective: 240px;
-}
-.app-loading-cube {
-  position: absolute;
-  width: 28px;
-  height: 28px;
-  background: #5471bf;
-  box-shadow: 0 7px 14px rgba(43, 77, 152, .13);
-  transform: rotateX(-25deg) rotateY(-35deg);
-  animation: app-cube-rise 2.4s ease-in-out infinite;
-}
-.app-loading-cube::before,
-.app-loading-cube::after {
-  position: absolute;
-  content: "";
-  background: #7794d3;
-}
-.app-loading-cube::before {
-  top: -10px;
-  left: 0;
-  width: 28px;
-  height: 10px;
-  transform: skewX(45deg);
-  transform-origin: bottom left;
-}
-.app-loading-cube::after {
-  top: 0;
-  right: -10px;
-  width: 10px;
-  height: 28px;
-  background: #34539b;
-  transform: skewY(45deg);
-  transform-origin: top left;
-}
-.app-loading-cube:nth-child(2) { top: 42px; left: 20px; animation-delay: 0s; }
-.app-loading-cube:nth-child(3) { top: 26px; left: 54px; animation-delay: .2s; }
-.app-loading-cube:nth-child(4) { top: 50px; left: 76px; animation-delay: .4s; }
-.app-loading-ground {
-  position: absolute;
-  right: 4px;
-  bottom: 1px;
-  left: 10px;
-  height: 12px;
-  border-radius: 50%;
-  background: rgba(84, 113, 191, .15);
-  filter: blur(7px);
+.app-loading-octo {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 16px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  animation: app-octo-bob 2.4s ease-in-out infinite;
 }
 .app-loading-title {
   margin: 0;
@@ -182,21 +138,27 @@ function useLoading() {
   font-size: 12px;
   letter-spacing: .04em;
 }
-html:not([data-theme="light"]) .app-loading-wrap { background: #101722; }
-html:not([data-theme="light"]) .app-loading-card {
-  background: #1a2434;
-  border-color: #ffffff14;
-  box-shadow: none;
+html[data-theme="dark"] .app-loading-wrap {
+  background:
+    radial-gradient(ellipse 100% 60% at 100% 0%, #1a2a48 0%, transparent 100%),
+    radial-gradient(ellipse 100% 80% at 0% 90%, #2a2618 0%, transparent 100%),
+    radial-gradient(ellipse 150% 70% at 100% 100%, #0f2a22 0%, transparent 100%),
+    #0d1117;
 }
-html:not([data-theme="light"]) .app-loading-title { color: #edf2fa; }
-html:not([data-theme="light"]) .app-loading-description,
-html:not([data-theme="light"]) .app-loading-version { color: #a9b7ce; }
-@keyframes app-cube-rise {
-  0%, 16%, 100% { transform: translateY(8px) rotateX(-25deg) rotateY(-35deg); opacity: .55; }
-  45%, 64% { transform: translateY(-9px) rotateX(-25deg) rotateY(-35deg); opacity: 1; }
+html[data-theme="dark"] .app-loading-card {
+  background: rgba(22, 27, 38, .82);
+  border-color: rgba(255, 255, 255, .07);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .4);
+}
+html[data-theme="dark"] .app-loading-title { color: #f0f4ff; }
+html[data-theme="dark"] .app-loading-description,
+html[data-theme="dark"] .app-loading-version { color: #c6cddc; }
+@keyframes app-octo-bob {
+  0%, 100% { transform: translateY(3px); }
+  50% { transform: translateY(-5px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .app-loading-cube { animation: none; opacity: 1; }
+  .app-loading-octo { animation: none; }
   .app-loading-wrap { transition: none; }
 }
     `;
@@ -222,12 +184,7 @@ html:not([data-theme="light"]) .app-loading-version { color: #a9b7ce; }
   oDiv.setAttribute("aria-label", loadingLabel);
   oDiv.innerHTML = `
     <div class="app-loading-card">
-      <div class="app-loading-cubes" aria-hidden="true">
-        <span class="app-loading-ground"></span>
-        <span class="app-loading-cube"></span>
-        <span class="app-loading-cube"></span>
-        <span class="app-loading-cube"></span>
-      </div>
+      <img class="app-loading-octo" src="./logo/pixel-octo/64x64.png" alt="" />
       <h1 class="app-loading-title">SkyLab Connect</h1>
       <p class="app-loading-description">${loadingText}</p>
       <span class="app-loading-version">v${pkg.version}</span>
@@ -236,12 +193,19 @@ html:not([data-theme="light"]) .app-loading-version { color: #a9b7ce; }
   return {
     appendLoading() {
       if (removed) return;
+      /* 跟 utils/appearance.ts 同一條規則：存了淺色／深色就照存的，沒存或選「系統」就跟隨 Windows */
+      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
+        .matches
+        ? "dark"
+        : "light";
+      let stored: string | null;
       try {
-        document.documentElement.dataset.theme =
-          localStorage.getItem("skylab.theme") === "light" ? "light" : "dark";
+        stored = localStorage.getItem("skylab.theme");
       } catch {
-        document.documentElement.dataset.theme = "dark";
+        stored = null;
       }
+      document.documentElement.dataset.theme =
+        stored === "light" || stored === "dark" ? stored : systemTheme;
       safeDOM.append(document.head, oStyle);
       safeDOM.append(document.body, oDiv);
     },

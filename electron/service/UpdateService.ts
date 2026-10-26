@@ -1,43 +1,36 @@
-import { app, net } from "electron";
+import { app, net, shell } from "electron";
+import { createHash } from "node:crypto";
+import { promises as fs } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-const LATEST_RELEASE_API =
-  "https://api.github.com/repos/1Ray0/SkyLab-Connect-Releases/releases/latest";
-const SETUP_ASSET_NAME = "SkyLab-Connect-Setup.exe";
-const MAC_ASSET_CANDIDATES: Record<string, string[]> = {
-  arm64: [
-    "SkyLab-Connect-mac-universal.dmg",
-    "SkyLab-Connect-mac-arm64.dmg",
-    "SkyLab-Connect-universal.dmg",
-    "SkyLab-Connect-arm64.dmg"
-  ],
-  x64: [
-    "SkyLab-Connect-mac-universal.dmg",
-    "SkyLab-Connect-mac-x64.dmg",
-    "SkyLab-Connect-universal.dmg",
-    "SkyLab-Connect-x64.dmg"
-  ]
-};
-
-function selectReleaseAsset(
-  assets: Array<{ name?: string; browser_download_url?: string }> | undefined
-) {
-  if (!assets?.length) return undefined;
-  if (process.platform === "darwin") {
-    const candidates =
-      MAC_ASSET_CANDIDATES[process.arch] || MAC_ASSET_CANDIDATES.arm64;
-    for (const candidate of candidates) {
-      const match = assets.find(asset => asset.name === candidate);
-      if (match) return match;
-    }
-    return assets.find(asset => asset.name?.toLowerCase().endsWith(".dmg"));
-  }
-  return assets.find(asset => asset.name === SETUP_ASSET_NAME);
-}
+const RELEASES_API =
+  "https://api.github.com/repos/SkyLab-tw/SkyLab-Connect/releases?per_page=30";
+// macOS 只發 universal dmg（electron-builder.json5 的 mac.target）
+const SETUP_ASSET_NAME =
+  process.platform === "darwin"
+    ? "SkyLab-Connect-mac-universal.dmg"
+    : "SkyLab-Connect-Setup.exe";
+const MAX_INSTALLER_SIZE = 512 * 1024 * 1024;
+const DOWNLOAD_HOSTS = new Set([
+  "github.com",
+  "release-assets.githubusercontent.com",
+  "objects.githubusercontent.com"
+]);
 
 type GitHubRelease = {
   tag_name?: string;
   html_url?: string;
-  assets?: Array<{ name?: string; browser_download_url?: string }>;
+  draft?: boolean;
+  assets?: GitHubAsset[];
+};
+
+type GitHubAsset = {
+  name?: string;
+  browser_download_url?: string;
+  digest?: string | null;
+  size?: number;
+  state?: string;
 };
 
 type ParsedVersion = {
@@ -90,25 +83,198 @@ function isNewerVersion(candidate: string, current: string): boolean {
   return false;
 }
 
+function validDownloadUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && DOWNLOAD_HOSTS.has(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function setupAsset(release: GitHubRelease): GitHubAsset | undefined {
+  return release.assets?.find(
+    asset =>
+      asset.name === SETUP_ASSET_NAME &&
+      asset.state === "uploaded" &&
+      Number.isSafeInteger(asset.size) &&
+      Number(asset.size) > 0 &&
+      Number(asset.size) <= MAX_INSTALLER_SIZE &&
+      /^sha256:[a-f\d]{64}$/i.test(asset.digest || "") &&
+      validDownloadUrl(asset.browser_download_url || "")
+  );
+}
+
+function selectNewestInstallableRelease(
+  releases: GitHubRelease[]
+): GitHubRelease | null {
+  let selected: GitHubRelease | null = null;
+  for (const release of releases) {
+    if (release.draft || !release.tag_name || !parseVersion(release.tag_name))
+      continue;
+    if (!setupAsset(release)) continue;
+    if (!selected || isNewerVersion(release.tag_name, selected.tag_name || ""))
+      selected = release;
+  }
+  return selected;
+}
+
 class UpdateService {
+  private installing = false;
+
   async check(): Promise<SkyLabUpdateInfo> {
     const currentVersion = app.getVersion();
-    const release = await this.fetchLatestRelease();
-    const latestVersion = String(release.tag_name || "").replace(/^v/i, "");
-    const setup = selectReleaseAsset(release.assets);
-    const downloadUrl = setup?.browser_download_url || release.html_url || "";
+    const release = selectNewestInstallableRelease(await this.fetchReleases());
+    const latestVersion = String(release?.tag_name || currentVersion).replace(
+      /^v/i,
+      ""
+    );
+    const downloadUrl = release
+      ? setupAsset(release)?.browser_download_url || ""
+      : "";
     return {
       currentVersion,
       latestVersion,
       updateAvailable:
-        !!downloadUrl && isNewerVersion(latestVersion, currentVersion),
+        !!release && isNewerVersion(latestVersion, currentVersion),
       downloadUrl
     };
   }
 
-  private fetchLatestRelease(): Promise<GitHubRelease> {
+  async install(
+    progress: (status: SkyLabUpdateProgress) => void
+  ): Promise<void> {
+    if (this.installing) throw new Error("An update is already in progress");
+    this.installing = true;
+    let directory = "";
+    try {
+      const release = selectNewestInstallableRelease(
+        await this.fetchReleases()
+      );
+      const asset = release && setupAsset(release);
+      if (
+        !release ||
+        !asset?.browser_download_url ||
+        !asset.digest ||
+        !asset.size ||
+        !isNewerVersion(release.tag_name || "", app.getVersion())
+      ) {
+        throw new Error("No newer verified installer is available");
+      }
+      directory = await fs.mkdtemp(join(tmpdir(), "SkyLab-Connect-update-"));
+      const installer = join(directory, SETUP_ASSET_NAME);
+      progress({ stage: "downloading", received: 0, total: asset.size });
+      await this.downloadInstaller(asset, installer, progress);
+      progress({ stage: "launching", received: asset.size, total: asset.size });
+      const launchError = await shell.openPath(installer);
+      if (launchError)
+        throw new Error(`Could not open installer: ${launchError}`);
+    } catch (error) {
+      if (directory)
+        await fs
+          .rm(directory, { recursive: true, force: true })
+          .catch(() => {});
+      throw error;
+    } finally {
+      this.installing = false;
+    }
+  }
+
+  private downloadInstaller(
+    asset: GitHubAsset,
+    installer: string,
+    progress: (status: SkyLabUpdateProgress) => void
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
-      const request = net.request({ method: "GET", url: LATEST_RELEASE_API });
+      const size = asset.size as number;
+      const digest = asset.digest as string;
+      const request = net.request({
+        method: "GET",
+        url: asset.browser_download_url as string,
+        redirect: "manual"
+      });
+      request.setHeader("User-Agent", `SkyLab-Connect/${app.getVersion()}`);
+      let redirects = 0;
+      let settled = false;
+      const timeout = setTimeout(() => {
+        fail(new Error("Update download timed out"));
+        request.abort();
+      }, 30 * 60_000);
+      const fail = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(error);
+      };
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve();
+      };
+      request.on("redirect", (_status, _method, redirectUrl) => {
+        redirects += 1;
+        if (redirects > 5 || !validDownloadUrl(redirectUrl)) {
+          fail(new Error("Update download redirected to an untrusted host"));
+          request.abort();
+          return;
+        }
+        // Electron requires this call synchronously inside the redirect event.
+        request.followRedirect();
+      });
+      request.on("response", response => {
+        if (response.statusCode !== 200) {
+          fail(new Error(`Update download failed (${response.statusCode})`));
+          request.abort();
+          return;
+        }
+        const contentLength = Number(response.headers["content-length"]);
+        if (contentLength && contentLength !== size) {
+          fail(new Error("Installer size differs from the release metadata"));
+          request.abort();
+          return;
+        }
+        void (async () => {
+          const file = await fs.open(installer, "wx");
+          const hash = createHash("sha256");
+          let received = 0;
+          let lastProgressAt = 0;
+          try {
+            for await (const chunk of response as unknown as AsyncIterable<Buffer>) {
+              const data = Buffer.from(chunk);
+              received += data.byteLength;
+              if (received > size)
+                throw new Error("Installer exceeds expected size");
+              hash.update(data);
+              await file.writeFile(data);
+              if (Date.now() - lastProgressAt > 200) {
+                progress({ stage: "downloading", received, total: size });
+                lastProgressAt = Date.now();
+              }
+            }
+          } finally {
+            await file.close();
+          }
+          progress({ stage: "verifying", received, total: size });
+          if (
+            received !== size ||
+            hash.digest("hex").toLowerCase() !== digest.slice(7).toLowerCase()
+          ) {
+            throw new Error("Installer integrity check failed");
+          }
+        })().then(finish, error => {
+          fail(error as Error);
+          request.abort();
+        });
+      });
+      request.on("error", fail);
+      request.end();
+    });
+  }
+
+  private fetchReleases(): Promise<GitHubRelease[]> {
+    return new Promise((resolve, reject) => {
+      const request = net.request({ method: "GET", url: RELEASES_API });
       request.setHeader("Accept", "application/vnd.github+json");
       request.setHeader("User-Agent", `SkyLab-Connect/${app.getVersion()}`);
       const timeout = setTimeout(() => {
@@ -126,7 +292,10 @@ class UpdateService {
             return;
           }
           try {
-            resolve(JSON.parse(body) as GitHubRelease);
+            const releases = JSON.parse(body);
+            if (!Array.isArray(releases))
+              throw new Error("Invalid release list");
+            resolve(releases as GitHubRelease[]);
           } catch {
             reject(new Error("Update service returned invalid JSON"));
           }
@@ -145,5 +314,5 @@ class UpdateService {
   }
 }
 
-export { isNewerVersion };
+export { isNewerVersion, selectNewestInstallableRelease };
 export default UpdateService;

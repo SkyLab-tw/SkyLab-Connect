@@ -72,12 +72,17 @@ class SkyLabService {
             });
             response.on("error", (err: Error) => {
               clearRequestTimeout();
-              reject(err);
+              reject(
+                new BusinessError(ResponseCode.BACKEND_UNREACHABLE, err.message)
+              );
             });
           });
+          // 連不上（離線、DNS、憑證、逾時）跟伺服器回錯誤分開，畫面才能給對的建議
           req.on("error", (err: Error) => {
             clearRequestTimeout();
-            reject(new BusinessError(ResponseCode.BACKEND_ERROR, err.message));
+            reject(
+              new BusinessError(ResponseCode.BACKEND_UNREACHABLE, err.message)
+            );
           });
           if (options.body !== undefined) {
             req.write(JSON.stringify(options.body));
@@ -85,7 +90,7 @@ class SkyLabService {
           timeout = setTimeout(() => {
             reject(
               new BusinessError(
-                ResponseCode.BACKEND_ERROR,
+                ResponseCode.BACKEND_UNREACHABLE,
                 "Request timed out."
               )
             );
@@ -214,6 +219,60 @@ class SkyLabService {
       throw new BusinessError(ResponseCode.BACKEND_ERROR, res.body);
     }
     return JSON.parse(res.body) as SkyLabResource[];
+  }
+
+  /** Resolve the incarnation from the authenticated API, never renderer input.
+   * A replacement VM may reuse both the address and VMID, but gets a new request.
+   * Legacy resources without an incarnation retain normal address-based checks.
+   */
+  async getSshHostAlias(vmid: number): Promise<string | undefined> {
+    if (!Number.isSafeInteger(vmid) || vmid <= 0) {
+      throw new Error("Invalid SSH resource");
+    }
+    const backendUrl = await this._settingsService.getBackendUrl();
+    const res = await this.request("GET", `/api/v1/resources/${vmid}`, {
+      auth: true
+    });
+    if (res.status !== 200) {
+      throw new BusinessError(ResponseCode.BACKEND_ERROR, res.body);
+    }
+    const resource = JSON.parse(res.body) as SkyLabResource;
+    if (resource.vmid !== vmid || resource.can_control === false) {
+      throw new Error("SSH resource is not available");
+    }
+    if (!resource.request_id) return undefined;
+    if ((await this._settingsService.getBackendUrl()) !== backendUrl) {
+      throw new Error("The server changed while opening SSH");
+    }
+    return (
+      "skylab-" +
+      createHash("sha256")
+        .update(
+          JSON.stringify([
+            backendUrl.replace(/\/$/, ""),
+            vmid,
+            resource.request_id
+          ])
+        )
+        .digest("hex")
+    );
+  }
+
+  async listQuickPracticeSessions(): Promise<SkyLabQuickPracticeSession[]> {
+    const res = await this.request(
+      "GET",
+      "/api/v1/quick-practice/sessions/my",
+      {
+        auth: true
+      }
+    );
+    if (res.status === 401) {
+      throw new BusinessError(ResponseCode.NOT_LOGGED_IN);
+    }
+    if (res.status !== 200) {
+      throw new BusinessError(ResponseCode.BACKEND_ERROR, res.body);
+    }
+    return JSON.parse(res.body) as SkyLabQuickPracticeSession[];
   }
 
   async getSessionStatus(vmid: number): Promise<SkyLabSessionStatus> {

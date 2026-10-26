@@ -15,9 +15,13 @@
     ],
     "skipLibCheck": true,
     "noEmit": true,
+    "baseUrl": ".",
     "paths": {
       "@/*": [
-        "./src/*"
+        "src/*"
+      ],
+      "@web/*": [
+        "./src/shared/web/*"
       ]
     },
     "types": [

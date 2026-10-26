@@ -1,4 +1,4 @@
-﻿import { shell } from "electron";
+import { shell } from "electron";
 import { BusinessError, ResponseCode } from "../core/BusinessError";
 import Logger from "../core/Logger";
 import SkyLabService from "./SkyLabService";
@@ -65,7 +65,7 @@ class AuthService {
    * finishes (success or failure).
    */
   async startLogin(
-    onResult: (success: boolean, error?: string, code?: string) => void
+    onResult: (success: boolean, error?: BusinessError) => void
   ): Promise<void> {
     if (this._loginInProgress) {
       return;
@@ -74,33 +74,28 @@ class AuthService {
     const attempt = ++this._loginAttempt;
     const isCurrent = () =>
       this._loginInProgress && this._loginAttempt === attempt;
-    const finish = (success: boolean, error?: string, code?: string) => {
+    const finish = (success: boolean, error?: BusinessError) => {
       if (!isCurrent()) return;
       this._loginInProgress = false;
       this._pollTimer = null;
-      onResult(success, error, code);
+      onResult(success, error);
     };
 
     try {
       const dc = await this._SkyLabService.requestDeviceCode();
       if (!isCurrent()) return;
-      // 只允許在瀏覽器開啟 http(s) 連結；後端若被竄改回傳 file:// 或自訂 scheme，
-      // shell.openExternal 會直接交給作業系統執行，必須先擋掉。
-      let loginUrl: URL;
-      try {
-        loginUrl = new URL(dc.login_url);
-      } catch {
+      if (!dc.device_code) {
         throw new BusinessError(
           ResponseCode.INTERNAL_ERROR,
-          "Backend returned an invalid login URL"
+          "Backend returned an invalid device code"
         );
       }
-      if (loginUrl.protocol !== "https:" && loginUrl.protocol !== "http:") {
-        throw new BusinessError(
-          ResponseCode.INTERNAL_ERROR,
-          `Refusing to open login URL with scheme ${loginUrl.protocol}`
-        );
-      }
+      const loginUrl = new URL(
+        "/login",
+        await this._settingsService.getBackendUrl()
+      );
+      loginUrl.searchParams.set("device_code", dc.device_code);
+      if (!isCurrent()) return;
       await shell.openExternal(loginUrl.toString());
       if (!isCurrent()) return;
       const expiresAt = Date.now() + dc.expires_in * 1000;
@@ -108,7 +103,7 @@ class AuthService {
       const poll = async () => {
         if (!isCurrent()) return;
         if (Date.now() > expiresAt) {
-          finish(false, "login timed out", "B1002");
+          finish(false, new BusinessError(ResponseCode.LOGIN_TIMEOUT));
           return;
         }
         try {
@@ -117,7 +112,7 @@ class AuthService {
           );
           if (!isCurrent()) return;
           if (result.status === "denied") {
-            finish(false, undefined, "B1003");
+            finish(false, new BusinessError(ResponseCode.LOGIN_CANCELLED));
             return;
           }
           if (result.status === "approved" && result.accessToken) {
@@ -134,8 +129,12 @@ class AuthService {
           Logger.warn("AuthService.startLogin.poll", (err as Error).message);
           finish(
             false,
-            (err as Error).message,
-            err instanceof BusinessError ? err.bizCode : "B1000"
+            err instanceof BusinessError
+              ? err
+              : new BusinessError(
+                  ResponseCode.INTERNAL_ERROR,
+                  (err as Error).message
+                )
           );
         }
       };

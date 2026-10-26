@@ -10,10 +10,10 @@
   directories: {
     output: "release/${version}"
   },
-  icon: "./public/logo/pack/512x512.png",
+  icon: "./public/logo/pixel-octo/512x512.png",
   files: ["dist", "dist-electron"],
   win: {
-    icon: "./public/logo/pack/icon.ico",
+    icon: "./public/logo/pixel-octo/icon.ico",
     extraResources: [
       {
         from: "vendor/wireguard",
@@ -42,14 +42,21 @@
     perMachine: true,
     allowToChangeInstallationDirectory: true,
     deleteAppDataOnUninstall: false,
-    include: "build/installer.nsh"
+    include: "build/installer.nsh",
+    // UpdateService 只認這個檔名，README 的「最新版」連結也指向它
+    artifactName: "SkyLab-Connect-Setup.exe"
+  },
+  portable: {
+    artifactName: "SkyLab-Connect-Portable.exe"
   },
   mac: {
-    icon: "./public/logo/pack/icon.icns",
+    // electron-builder 會從 512x512 PNG 產生 icns
+    icon: "./public/logo/pixel-octo/512x512.png",
     category: "public.app-category.developer-tools",
     darkModeSupport: true,
     hardenedRuntime: true,
     gatekeeperAssess: false,
+    // UpdateService 依這個檔名挑 macOS 安裝檔
     artifactName: "SkyLab-Connect-mac-${arch}.${ext}",
     extraResources: [
       {

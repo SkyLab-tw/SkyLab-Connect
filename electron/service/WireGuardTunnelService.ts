@@ -8,14 +8,16 @@ import {
 } from "crypto";
 import { app, BrowserWindow, Notification, safeStorage } from "electron";
 import fs from "fs";
-import { isIP } from "net";
+import { createConnection, isIP } from "net";
 import path from "path";
 import BeanFactory from "../core/BeanFactory";
-import { BusinessError, ResponseCode } from "../core/BusinessError";
+import { BusinessError, ResponseCode, bizCodeOf } from "../core/BusinessError";
 import GlobalConstant from "../core/GlobalConstant";
 import Logger from "../core/Logger";
+import { localize } from "../utils/LocaleUtils";
 import PathUtils from "../utils/PathUtils";
 import ResponseUtils from "../utils/ResponseUtils";
+import SettingsService from "./SettingsService";
 import SkyLabService from "./SkyLabService";
 
 type WireGuardIdentity = {
@@ -33,12 +35,79 @@ type DecryptedIdentity = {
 
 type TunnelServiceState = "missing" | "stopped" | "running";
 
+/** 連線錯誤：畫面依 code 顯示在地化文案，message 只供記錄與除錯 */
+type TunnelProblem = { code: string; message: string };
+
+const problemOf = (error: unknown, fallback: ResponseCode): TunnelProblem => ({
+  code: error instanceof BusinessError ? error.bizCode : bizCodeOf(fallback),
+  message: error instanceof Error ? error.message : String(error)
+});
+
+const knownProblem = (code: ResponseCode): TunnelProblem =>
+  problemOf(new BusinessError(code), code);
+
+/** Windows 的 ERROR_CANCELLED：使用者在 UAC 視窗按了「否」 */
+const ERROR_CANCELLED = 1223;
+
+/**
+ * 一個參數照 Windows 命令列規則（CommandLineToArgvW）加引號：含空白或雙引號才包起來，
+ * 雙引號前與結尾的反斜線要加倍。安裝在「SkyLab Connect」這種有空白的資料夾時，
+ * 沒加引號 msiexec 會拿到被切開的安裝檔路徑。
+ */
+export const windowsArgument = (value: string): string => {
+  if (value && !/[\s"]/.test(value)) return value;
+  const escaped = value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, "$1$1");
+  return `"${escaped}"`;
+};
+
+/**
+ * 以系統管理員身分執行並等它結束的 PowerShell 指令。
+ * 直接呼叫 Process.Start 而不用 Start-Process：Start-Process 失敗時只丟一般的
+ * InvalidOperationException，分不出使用者在 UAC 按「否」（Win32Exception 1223）還是真的失敗。
+ * 結束碼：UAC 被拒＝1223、啟動失敗＝1、其餘照程式本身的結束碼（3010＝需重開機也算成功）。
+ */
+export const elevatedCommand = (executable: string, args: string[]): string => {
+  const quote = (value: string) => `'${value.replace(/'/g, "''")}'`;
+  return [
+    "$psi = New-Object System.Diagnostics.ProcessStartInfo;",
+    `$psi.FileName = ${quote(executable)};`,
+    `$psi.Arguments = ${quote(args.map(windowsArgument).join(" "))};`,
+    "$psi.Verb = 'runas';",
+    "$psi.UseShellExecute = $true;",
+    "$psi.WindowStyle = 'Hidden';",
+    "try { $p = [System.Diagnostics.Process]::Start($psi) } catch {",
+    "$e = $_.Exception;",
+    "while ($e) {",
+    `if ($e -is [System.ComponentModel.Win32Exception] -and $e.NativeErrorCode -eq ${ERROR_CANCELLED}) { exit ${ERROR_CANCELLED} };`,
+    "$e = $e.InnerException",
+    "};",
+    "exit 1",
+    "};",
+    "if (-not $p) { exit 1 };",
+    "$p.WaitForExit();",
+    "if ($p.ExitCode -eq 0 -or $p.ExitCode -eq 3010) { exit 0 };",
+    "exit $p.ExitCode"
+  ].join(" ");
+};
+
+/** 提權指令的結束碼 → 錯誤；null 表示成功 */
+export const elevatedExitError = (
+  code: number | null
+): BusinessError | null => {
+  if (code === 0) return null;
+  if (code === ERROR_CANCELLED) {
+    return new BusinessError(ResponseCode.ADMIN_CANCELLED);
+  }
+  return new BusinessError(ResponseCode.ADMIN_FAILED, `exit code ${code}`);
+};
+
 const TUNNEL_NAME = "SkyLab";
 const SERVICE_NAME = `WireGuardTunnel$${TUNNEL_NAME}`;
 const LEASE_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const LEASE_REFRESH_RETRY_MS = 60 * 1000;
-const ORPHANED_TUNNEL_ERROR =
-  "A tunnel from an earlier app session needs to be reconnected.";
+const TARGET_PROBE_INTERVAL_MS = 10 * 1000;
+const TARGET_PROBE_TIMEOUT_MS = 1500;
+const CONNECTION_EVIDENCE_MAX_AGE_MS = 90 * 1000;
 const WIREGUARD_MSI_SHA256 =
   "6daa5d37a9e2950dfb8c48b95ab8e562cb2bad1c785d020f38f97bea4c6a5566";
 const PRIVATE_KEY_DER_PREFIX = Buffer.from(
@@ -51,9 +120,13 @@ class WireGuardTunnelService {
   private _listener: NodeJS.Timeout | null = null;
   private _lastStartTime = -1;
   private _notifiedStartTime = -1;
-  private _connectionError: string | null = null;
+  private _connectionError: TunnelProblem | null = null;
   private _connections: SkyLabTunnelInfo[] = [];
   private _latestHandshakeAt: number | null = null;
+  private _handshakeUnavailable = false;
+  private _lastTargetProbeAt = -1;
+  private _lastReachableAt: number | null = null;
+  private _nextTargetProbeOffset = 0;
   private _expiresAt: number | null = null;
   private _polling = false;
   private _lastLeaseRefreshAt = -1;
@@ -80,7 +153,7 @@ class WireGuardTunnelService {
   }
 
   get connectionError(): string | null {
-    return this._connectionError;
+    return this._connectionError?.message ?? null;
   }
 
   private _wireGuardExecutable(): string {
@@ -219,7 +292,7 @@ class WireGuardTunnelService {
     } catch (error) {
       if (
         !(error instanceof BusinessError) ||
-        error.bizCode !== ResponseCode.WIREGUARD_NOT_INSTALLED.split(";")[0]
+        error.bizCode !== bizCodeOf(ResponseCode.WIREGUARD_NOT_INSTALLED)
       ) {
         throw error;
       }
@@ -231,13 +304,27 @@ class WireGuardTunnelService {
       "WireGuardTunnelService.ensureWireGuardInstalled",
       "Installing bundled, signed WireGuard for Windows prerequisite"
     );
-    await this._runElevatedProcess("msiexec.exe", [
-      "/i",
-      installerPath,
-      "/qn",
-      "/norestart",
-      "DO_NOT_LAUNCH=1"
-    ]);
+    try {
+      await this._runElevatedProcess("msiexec.exe", [
+        "/i",
+        installerPath,
+        "/qn",
+        "/norestart",
+        "DO_NOT_LAUNCH=1"
+      ]);
+    } catch (error) {
+      // 拒絕 UAC 照實回報，讓畫面請使用者再按一次；其餘都算安裝失敗
+      if (
+        error instanceof BusinessError &&
+        error.bizCode === bizCodeOf(ResponseCode.ADMIN_CANCELLED)
+      ) {
+        throw error;
+      }
+      throw new BusinessError(
+        ResponseCode.WIREGUARD_INSTALL_FAILED,
+        (error as Error).message
+      );
+    }
     this._wireGuardExecutable();
   }
 
@@ -398,41 +485,35 @@ class WireGuardTunnelService {
     ].join("\n");
   }
 
-  private _powershellQuote(value: string): string {
-    return `'${value.replace(/'/g, "''")}'`;
-  }
-
-  // Start-Process 只把 -ArgumentList 以空白串接、不替含空白的參數加引號；安裝路徑
-  // （C:\Program Files\SkyLab Connect\…）或 userData 含空白時，msiexec／wireguard.exe
-  // 會收到被拆開的路徑，所以先依 Windows 命令列規則（CommandLineToArgvW）加引號。
-  private _windowsArgument(value: string): string {
-    if (value && !/[\s"]/.test(value)) return value;
-    const escaped = value.replace(/(\\*)"/g, '$1$1\\"');
-    return `"${escaped.replace(/(\\+)$/, "$1$1")}"`;
-  }
-
   private _runElevatedProcess(
     executable: string,
     args: string[]
   ): Promise<void> {
-    const argumentList = args
-      .map(value => this._powershellQuote(this._windowsArgument(value)))
-      .join(",");
-    const command = [
-      `$p = Start-Process -FilePath ${this._powershellQuote(executable)}`,
-      `-ArgumentList @(${argumentList}) -Verb RunAs -Wait -PassThru -WindowStyle Hidden`,
-      "; if ($p.ExitCode -eq 0 -or $p.ExitCode -eq 3010) { exit 0 } else { exit 1 }"
-    ].join(" ");
     return new Promise((resolve, reject) => {
       const child = spawn(
         "powershell.exe",
-        ["-NoProfile", "-NonInteractive", "-Command", command],
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          elevatedCommand(executable, args)
+        ],
         { windowsHide: true, stdio: "ignore" }
       );
-      child.once("error", reject);
+      child.once("error", error =>
+        reject(new BusinessError(ResponseCode.ADMIN_FAILED, error.message))
+      );
       child.once("exit", code => {
-        if (code === 0) resolve();
-        else reject(new Error(`Administrator action exited ${code}`));
+        const error = elevatedExitError(code);
+        if (!error) {
+          resolve();
+          return;
+        }
+        Logger.warn(
+          "WireGuardTunnelService.runElevatedProcess",
+          `${path.basename(executable)} ${args[0] ?? ""}: ${error.message}`
+        );
+        reject(error);
       });
     });
   }
@@ -528,7 +609,7 @@ class WireGuardTunnelService {
     if ((await this._serviceState()) === "missing") return;
     await this._runElevatedWireGuard(["/uninstalltunnelservice", TUNNEL_NAME]);
     if (!(await this._waitUntilRemoved())) {
-      throw new Error("WireGuard tunnel service could not be removed");
+      throw new BusinessError(ResponseCode.TUNNEL_STOP_FAILED);
     }
   }
 
@@ -541,42 +622,81 @@ class WireGuardTunnelService {
     return this.isRunning();
   }
 
-  private async _readLatestHandshake(): Promise<number | null> {
-    if (process.platform === "darwin") {
-      if (!(await this.isRunning())) return null;
-      try {
-        const output = await this._execFile("sudo", [
-          "-n",
-          PathUtils.getInstalledMacWireGuardHelperPath(),
-          "handshake"
-        ]);
-        const values = output
-          .trim()
-          .split(/\s+/)
-          .map(value => Number(value))
-          .filter(value => Number.isFinite(value) && value > 0);
-        return values.length ? Math.max(...values) * 1000 : null;
-      } catch {
-        return null;
-      }
-    }
-    const executable = this._wgExecutable();
-    if (!executable || !(await this.isRunning())) return null;
+  private async _readLatestHandshake(): Promise<{
+    at: number | null;
+    unavailable: boolean;
+  }> {
     try {
-      const output = await this._execFile(executable, [
-        "show",
-        TUNNEL_NAME,
-        "latest-handshakes"
-      ]);
+      // macOS 的 wg 只能以 root 讀 utun，交給 sudoers 允許的 helper 查詢
+      const output =
+        process.platform === "darwin"
+          ? await this._execFile("sudo", [
+              "-n",
+              PathUtils.getInstalledMacWireGuardHelperPath(),
+              "handshake"
+            ])
+          : await this._readWindowsHandshake();
+      if (output === null) return { at: null, unavailable: true };
       const values = output
         .trim()
         .split(/\s+/)
         .map(value => Number(value))
         .filter(value => Number.isFinite(value) && value > 0);
-      return values.length ? Math.max(...values) * 1000 : null;
+      return {
+        at: values.length ? Math.max(...values) * 1000 : null,
+        unavailable: false
+      };
     } catch {
-      return null;
+      // A normal Windows user cannot inspect a protected WireGuard tunnel.
+      // This says nothing about whether the tunnel has exchanged traffic.
+      return { at: null, unavailable: true };
     }
+  }
+
+  private async _readWindowsHandshake(): Promise<string | null> {
+    const executable = this._wgExecutable();
+    if (!executable) return null;
+    return this._execFile(executable, [
+      "show",
+      TUNNEL_NAME,
+      "latest-handshakes"
+    ]);
+  }
+
+  private _probeTarget(target: SkyLabTunnelInfo): Promise<boolean> {
+    return new Promise(resolve => {
+      const socket = createConnection({
+        host: target.host!,
+        port: target.port!
+      });
+      let settled = false;
+      const finish = (reachable: boolean) => {
+        if (settled) return;
+        settled = true;
+        socket.destroy();
+        resolve(reachable);
+      };
+      socket.setTimeout(TARGET_PROBE_TIMEOUT_MS);
+      socket.once("connect", () => finish(true));
+      socket.once("error", () => finish(false));
+      socket.once("timeout", () => finish(false));
+    });
+  }
+
+  private async _probeAuthorizedTargets(): Promise<boolean> {
+    const targets = Array.from(
+      { length: Math.min(3, this._connections.length) },
+      (_, index) =>
+        this._connections[
+          (this._nextTargetProbeOffset + index) % this._connections.length
+        ]
+    );
+    if (!targets.length) return false;
+    this._nextTargetProbeOffset =
+      (this._nextTargetProbeOffset + targets.length) % this._connections.length;
+    return (
+      await Promise.all(targets.map(target => this._probeTarget(target)))
+    ).some(Boolean);
   }
 
   private _normalizeConnections(
@@ -615,7 +735,13 @@ class WireGuardTunnelService {
 
   private _applyLease(config: SkyLabWireGuardConfig): void {
     const now = Date.now();
-    this._connections = this._normalizeConnections(config);
+    const connections = this._normalizeConnections(config);
+    if (JSON.stringify(connections) !== JSON.stringify(this._connections)) {
+      this._lastTargetProbeAt = -1;
+      this._lastReachableAt = null;
+      this._nextTargetProbeOffset = 0;
+    }
+    this._connections = connections;
     this._expiresAt = now + Math.max(60, Number(config.expires_in) || 0) * 1000;
     this._lastLeaseRefreshAt = now;
     this._lastLeaseRefreshAttemptAt = now;
@@ -644,7 +770,10 @@ class WireGuardTunnelService {
     try {
       await operation;
     } catch (error) {
-      this._connectionError = (error as Error).message;
+      this._connectionError = problemOf(
+        error,
+        ResponseCode.WIREGUARD_START_FAILED
+      );
       throw error;
     } finally {
       if (this._startPromise === operation) this._startPromise = null;
@@ -696,13 +825,21 @@ class WireGuardTunnelService {
       this._activeConfigFingerprint = this._configFingerprint(config);
       this._applyLease(config);
       this._notifiedStartTime = -1;
-      this._latestHandshakeAt = await this._readLatestHandshake();
+      const handshake = await this._readLatestHandshake();
+      this._latestHandshakeAt = handshake.at;
+      this._handshakeUnavailable = handshake.unavailable;
+      this._lastTargetProbeAt = -1;
+      this._lastReachableAt = null;
+      this._nextTargetProbeOffset = 0;
       Logger.info(
         "WireGuardTunnelService.startTunnel",
         `Started ${TUNNEL_NAME}; targets=${this._connections.length}`
       );
     } catch (error) {
-      this._connectionError = (error as Error).message;
+      this._connectionError = problemOf(
+        error,
+        ResponseCode.WIREGUARD_START_FAILED
+      );
       try {
         await this._SkyLabService.disconnectWireGuard(identity.deviceId);
       } catch (cleanupError) {
@@ -760,12 +897,8 @@ class WireGuardTunnelService {
       this._activeConfigFingerprint !== null &&
       this._configFingerprint(config) !== this._activeConfigFingerprint
     ) {
-      this._connectionError =
-        "The WireGuard network configuration changed. Reconnect to apply it.";
-      throw new BusinessError(
-        ResponseCode.WIREGUARD_START_FAILED,
-        this._connectionError
-      );
+      this._connectionError = knownProblem(ResponseCode.TUNNEL_CONFIG_CHANGED);
+      throw new BusinessError(ResponseCode.TUNNEL_CONFIG_CHANGED);
     }
     this._applyLease(config);
     Logger.info(
@@ -836,6 +969,10 @@ class WireGuardTunnelService {
     this._notifiedStartTime = -1;
     this._connections = [];
     this._latestHandshakeAt = null;
+    this._handshakeUnavailable = false;
+    this._lastTargetProbeAt = -1;
+    this._lastReachableAt = null;
+    this._nextTargetProbeOffset = 0;
     this._expiresAt = null;
     this._lastLeaseRefreshAt = -1;
     this._lastLeaseRefreshAttemptAt = -1;
@@ -843,10 +980,11 @@ class WireGuardTunnelService {
     this._activeIdentity = null;
     this._activeIdentityScope = null;
     this._leaseRefreshError = null;
-    this._connectionError = (localError || backendError)?.message || null;
-    if (localError || backendError) {
-      throw localError || backendError;
-    }
+    const stopError = localError || backendError;
+    this._connectionError = stopError
+      ? problemOf(stopError, ResponseCode.TUNNEL_STOP_FAILED)
+      : null;
+    if (stopError) throw stopError;
   }
 
   async cleanupOrphanedTunnel(): Promise<void> {
@@ -875,33 +1013,77 @@ class WireGuardTunnelService {
     await this._operationTail;
     const localRunning = await this.isRunning();
     const handshake = localRunning ? await this._readLatestHandshake() : null;
-    if (revision !== this._operationRevision) return this.getStatus();
     const expired = this._expiresAt !== null && Date.now() >= this._expiresAt;
+    const shouldProbe =
+      localRunning &&
+      !expired &&
+      this._lastStartTime !== -1 &&
+      this._connections.length > 0 &&
+      (handshake?.at === null ||
+        handshake?.at === undefined ||
+        Date.now() - handshake.at >= CONNECTION_EVIDENCE_MAX_AGE_MS) &&
+      (this._lastTargetProbeAt === -1 ||
+        Date.now() - this._lastTargetProbeAt >= TARGET_PROBE_INTERVAL_MS);
+    const reachable = shouldProbe
+      ? await this._probeAuthorizedTargets()
+      : false;
+    if (revision !== this._operationRevision) return this.getStatus();
     const starting = this._startPromise !== null;
     const orphaned = localRunning && this._lastStartTime === -1 && !starting;
     if (localRunning && !expired) {
-      this._latestHandshakeAt = handshake;
+      this._latestHandshakeAt = handshake?.at ?? null;
+      this._handshakeUnavailable = handshake?.unavailable ?? false;
+      if (shouldProbe) {
+        this._lastTargetProbeAt = Date.now();
+        if (reachable) this._lastReachableAt = Date.now();
+      }
     }
     if (expired) {
-      this._connectionError =
-        "The secure session expired. Disconnect and sign in again.";
+      this._connectionError = knownProblem(ResponseCode.TUNNEL_EXPIRED);
     } else if (orphaned) {
-      this._connectionError = ORPHANED_TUNNEL_ERROR;
-    } else if (this._connectionError === ORPHANED_TUNNEL_ERROR) {
+      this._connectionError = knownProblem(ResponseCode.TUNNEL_ORPHANED);
+    } else if (
+      this._connectionError?.code === bizCodeOf(ResponseCode.TUNNEL_ORPHANED)
+    ) {
       this._connectionError = null;
     }
     const running =
       localRunning && this._lastStartTime !== -1 && !expired && !orphaned;
+    const connected =
+      running &&
+      ((this._latestHandshakeAt !== null &&
+        Date.now() - this._latestHandshakeAt <
+          CONNECTION_EVIDENCE_MAX_AGE_MS) ||
+        (this._lastReachableAt !== null &&
+          Date.now() - this._lastReachableAt < CONNECTION_EVIDENCE_MAX_AGE_MS));
     return {
       running,
+      connected,
+      handshakeUnavailable: this._handshakeUnavailable,
       lastStartTime: this._lastStartTime,
-      connectionError: this._connectionError,
+      connectionError: this._connectionError?.message ?? null,
+      connectionErrorCode: this._connectionError?.code ?? null,
       leaseRefreshError: this._leaseRefreshError,
       tunnels: this._connections,
       mode: "wireguard",
       interfaceName: running ? TUNNEL_NAME : null,
       latestHandshakeAt: this._latestHandshakeAt
     };
+  }
+
+  private async _notifyConnectionLost(): Promise<void> {
+    const settingsService: SettingsService =
+      BeanFactory.getBean("settingsService");
+    const language = await settingsService.getLanguage().catch(() => "");
+    new Notification({
+      title: app.getName(),
+      body: localize(language, {
+        "zh-TW": "安全連線已中斷，請回到 SkyLab Connect 重新連線。",
+        "en-US":
+          "The secure connection was lost. Open SkyLab Connect to reconnect.",
+        ja: "安全な接続が切断されました。SkyLab Connect を開いて再接続してください。"
+      })
+    }).show();
   }
 
   watchTunnel(listenerParam: ListenerParam) {
@@ -920,10 +1102,7 @@ class WireGuardTunnelService {
           this._lastStartTime !== -1 &&
           this._notifiedStartTime !== this._lastStartTime
         ) {
-          new Notification({
-            title: app.getName(),
-            body: "WireGuard connection was lost."
-          }).show();
+          await this._notifyConnectionLost();
           this._notifiedStartTime = this._lastStartTime;
         }
         const win: BrowserWindow = BeanFactory.getBean("win");

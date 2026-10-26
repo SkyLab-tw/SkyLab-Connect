@@ -25,4 +25,14 @@ release
 *.sw?
 
 pnpm-lock.yaml
+# Local credentials and release publishing state
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+release-publish-state*.json
+__pycache__/
+
+# macOS WireGuard build output (prepare-wireguard-mac.sh)
 vendor/wireguard-mac/wireguard-go

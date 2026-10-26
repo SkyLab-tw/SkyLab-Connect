@@ -17,8 +17,7 @@ class AuthController extends BaseController {
 
   private _emitAuthEvent(payload: {
     type: "login-success" | "login-failure" | "login-cancelled";
-    error?: string;
-    code?: string;
+    errorCode?: string;
   }) {
     const win: BrowserWindow = BeanFactory.getBean("win");
     if (win && !win.isDestroyed()) {
@@ -28,13 +27,17 @@ class AuthController extends BaseController {
 
   startLogin(req: ControllerParam) {
     this._authService
-      .startLogin((success, error, code) => {
+      .startLogin((success, error) => {
         if (success) {
           this._emitAuthEvent({ type: "login-success" });
-        } else if (code === "B1003") {
+        } else if (error?.bizCode === "B1003") {
           this._emitAuthEvent({ type: "login-cancelled" });
         } else {
-          this._emitAuthEvent({ type: "login-failure", error, code });
+          Logger.warn("AuthController.startLogin.result", error?.message || "");
+          this._emitAuthEvent({
+            type: "login-failure",
+            errorCode: error?.bizCode
+          });
         }
       })
       .then(() => {

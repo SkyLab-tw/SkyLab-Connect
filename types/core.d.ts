@@ -91,6 +91,11 @@ interface DevicePollResult {
   refreshToken: string | null;
 }
 
+/** 設定頁一次存檔送出的欄位（只帶有改的） */
+type SkyLabSettingsPatch = Partial<
+  Pick<SkyLabSettings, "language" | "launchAtStartup" | "backendUrl">
+>;
+
 interface SkyLabResource {
   vmid: number | null;
   request_id?: string | null;
@@ -136,6 +141,14 @@ interface SkyLabResource {
   public_urls?: string[];
 }
 
+interface SkyLabQuickPracticeSession {
+  id: string;
+  title: string;
+  status: string;
+  expires_at?: string | null;
+  machines: { request_id: string; vmid?: number | null }[];
+}
+
 interface SkyLabTunnelInfo {
   vmid?: number;
   name?: string;
@@ -149,8 +162,12 @@ interface SkyLabTunnelInfo {
 interface TunnelStatusInfo {
   leaseRefreshError?: string | null;
   running: boolean;
+  connected?: boolean;
+  handshakeUnavailable?: boolean;
   lastStartTime: number;
+  /** 英文原始訊息，只供除錯；畫面依 connectionErrorCode 顯示在地化文案 */
   connectionError: string | null;
+  connectionErrorCode?: string | null;
   tunnels: SkyLabTunnelInfo[];
   mode?: "wireguard";
   interfaceName?: string | null;
@@ -199,4 +216,10 @@ interface SkyLabUpdateInfo {
   latestVersion: string;
   updateAvailable: boolean;
   downloadUrl: string;
+}
+
+interface SkyLabUpdateProgress {
+  stage: "downloading" | "verifying" | "launching";
+  received: number;
+  total: number;
 }

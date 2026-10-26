@@ -1,0 +1,277 @@
+/* ============================================
+   Theme Variables (CSS Custom Properties)
+   切換 body.dark 即可套用深色主題
+   ============================================ */
+
+:root {
+  /* ----- Backgrounds ----- */
+  --color-bg-base: #e8f0fd;
+  --color-bg-gradient-blue: #c1daff;
+  --color-bg-gradient-yellow: #feffed;
+  --color-bg-gradient-green: #edfff6;
+  --color-bg-gradient-opacity: 1;
+
+  /* ----- Surfaces ----- */
+  --color-surface: #ffffff;
+  --color-surface-glass: rgba(255, 255, 255, 0.62);
+  --color-surface-glass-border: rgba(255, 255, 255, 0.5);
+  --color-sidebar: #ffffff;
+  --color-sidebar-glass: rgba(255, 255, 255, 0.5);
+  --color-sidebar-glass-border: rgba(255, 255, 255, 0.35);
+
+  /* ----- Brand ----- */
+  --color-primary: #5471bf;
+  --color-primary-dark: #2b4d98;
+  --color-primary-light: #6a7fb3;
+  /* 品牌色文字／邊框用：亮暗兩色都達 AA，勿與 --color-text-primary 混淆 */
+  --color-primary-on-surface: #2b4d98;
+
+  /* ----- Text ----- */
+  --color-text: #5471bf;
+  --color-text-primary: #3a549d;
+  --color-text-secondary: #617dc8;
+  --color-text-muted: #8291aa;
+  --color-text-on-primary: #ffffff;
+
+  /* ----- Borders & dividers ----- */
+  --color-border: #e5eaf3;
+  --color-divider: #eef2f9;
+
+  /* ----- Interactive ----- */
+  --color-hover: #e8efff;
+  --color-row-hover: #d9e4fc;
+  --color-overlay: rgba(20, 30, 60, 0.25);
+
+  /* ----- Status ----- */
+  --color-success:        #28a745;
+  --color-danger:         #dc3545;
+  --color-danger-dark:    #b91c1c;
+  --color-info:           #2b4d98;
+  --color-pending:        #d97706;
+
+  /* 防火牆拓撲「對外開放」的連線：--color-info 在 2px 虛線下近黑、
+     跟內部互通的灰分不開，改用亮一階的藍（僅限拓撲連線與其圖例） */
+  --color-flow-inbound:   #2b7de0;
+
+  /* ----- Machine kind（機器來源徽章，MachineKindBadge）-----
+     顏色只編碼「跟我的關係」：我的機器走 --color-info，
+     別人的機器（共享／學生機器）用這個紫，類別辨識交給 icon＋文字 */
+  --color-kind-shared:   #7c5cbf;
+  --color-status-neutral: #6b7280;
+
+  /* ----- Machine terminal（首頁機器卡的終端輸出，MachineTerminal）-----
+     亮暗兩個主題都是深色螢幕（底色取深色主題的藍），所以不在 body.dark 覆寫；
+     關機時換成較灰的底。小字都對底色達 AA（dim 4.5:1 起）。
+     這裡是預設主色的值；換主色時 ThemeContext 依主色色相改寫（deriveDeepPalette） */
+  --color-terminal-bg:       #1a2a48;
+  --color-terminal-bg-off:   #262e40;
+  --color-terminal-text:     #d9e8ff;
+  --color-terminal-text-off: #b4bdd0;
+  --color-terminal-key:      #89a5e0;
+  --color-terminal-dim:      #8196c4;
+  --color-terminal-cell:     rgba(137, 165, 224, 0.26);
+  --color-terminal-ok:       #3ecf6a;
+  --color-terminal-warn:     #f5a524;
+  --color-terminal-danger:   #ff7a7a;
+
+  /* ----- Code sample（AI API 範例程式碼、聊天回覆裡的程式碼區塊）-----
+     比照 VS Code 深色編輯器（Monaco vs-dark），亮暗兩個主題都是深底，所以不在 body.dark 覆寫 */
+  --color-code-bg:     #1e1e1e;
+  --color-code-header: #252526;
+  --color-code-border: #353c46;
+  --color-code-hover:  #353c46;
+  --color-code-text:   #d4d4d4;
+  --color-code-muted:  #bfc7d5;
+
+  /* ----- Quick-practice folder（快速練習資料夾，QuickTemplateFolder）-----
+     前蓋上的小字是白字，淺端 #5a74bf 對白字約 4.5:1。
+     這裡是預設主色的值；換主色時 ThemeContext 依主色色相改寫（deriveDeepPalette） */
+  --color-folder-back-top:    #34549f;
+  --color-folder-back-bottom: #22407f;
+  --color-folder-front-light: #5a74bf;
+  --color-folder-front-dark:  #3b58a4;
+  --color-folder-paper:       #ffffff;
+  --color-folder-ink:         #2b4d98;
+  --color-folder-shadow:      rgba(20, 38, 84, 0.3);
+
+  /* ----- Glass backdrop filters -----
+     所有玻璃表面的 backdrop-filter 集中在此，風格變體（液態玻璃）
+     可整體換濾鏡；sidebar 霧度較重、獨立一組 */
+  --glass-backdrop-filter: blur(12px) saturate(1.4);
+  --sidebar-backdrop-filter: blur(16px) saturate(1.6);
+
+  /* ----- Shadows：淺色模式的陰影定義在下方 body 區塊（色調跟著主色） ----- */
+
+  /* ----- Flow canvas ----- */
+  --color-flow-bg: rgba(179, 213, 250, 0.315);
+  --color-flow-border: rgba(255, 255, 255, 0.6);
+  --color-flow-shadow: rgba(0, 0, 0, 0.06);
+}
+
+/* ============================================
+   淺色模式陰影：色調跟著主色走
+   陰影色 --shadow-color（一般）與 --shadow-color-deep（液態玻璃的深陰影）
+   預設是原本的深藍 rgba(67, 90, 149)／rgba(31, 44, 90)，外觀與以前相同；
+   換主色時 ThemeContext 注入的 body { … } 會依主色色相改寫這兩個色。
+   必須定義在 body（不是 :root）：陰影引用色調變數是在「定義的那個元素」上代入，
+   放 :root 會永遠吃到預設色，注入到 body 的色調就沒作用。
+   body.dark 與各風格的選擇器特異度較高，照樣蓋過這裡。
+   ============================================ */
+
+body {
+  --shadow-color: #435a95;
+  --shadow-color-deep: #1f2c5a;
+  --shadow-sm: 0 1px 3px color-mix(in srgb, var(--shadow-color) 8%, transparent);
+  --shadow-md: 0 4px 12px color-mix(in srgb, var(--shadow-color) 8%, transparent);
+  --shadow-lg: 0 8px 24px color-mix(in srgb, var(--shadow-color) 12%, transparent);
+  --shadow-glass:
+    0 4px 16px color-mix(in srgb, var(--shadow-color) 10%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.70);
+}
+
+/* ============================================
+   Dark Theme
+   深色背景延續三色暈染概念，但壓低飽和、提高對比
+   ============================================ */
+
+body.dark {
+  /* ----- Backgrounds ----- */
+  --color-bg-base: #0d1117;
+  --color-bg-gradient-blue: #1a2a48;
+  --color-bg-gradient-yellow: #2a2618;
+  --color-bg-gradient-green: #0f2a22;
+
+  /* ----- Surfaces ----- */
+  --color-surface: #161b26;
+  --color-surface-glass: rgba(22, 27, 38, 0.58);
+  --color-surface-glass-border: rgba(255, 255, 255, 0.07);
+  --color-sidebar: #161b26;
+  --color-sidebar-glass: rgba(22, 27, 38, 0.65);
+  --color-sidebar-glass-border: rgba(255, 255, 255, 0.06);
+
+  /* ----- Brand ----- */
+  --color-primary: #4361a2;
+  --color-primary-dark: rgb(47, 78, 140);
+  --color-primary-light: #89a5e0;
+  --color-primary-on-surface: #89a5e0;
+
+  /* ----- Text ----- */
+  --color-text: #d4deef;
+  --color-text-primary: #f0f4ff;
+  --color-text-secondary: #d9e8ff;
+  --color-text-muted: #c6cddc;
+  --color-text-on-primary: #ffffff;
+
+  /* ----- Borders ----- */
+  --color-border: #2a3142;
+  --color-divider: #1f2636;
+
+  /* ----- Interactive ----- */
+  --color-hover: #1f2636;
+  --color-row-hover: #273148;
+  --color-overlay: rgba(0, 0, 0, 0.6);
+
+  /* ----- Status -----
+     info / pending 在深色底改用較亮的值確保可讀性 */
+  --color-info:           #89a5e0;
+  --color-pending:        #f59e0b;
+  --color-status-neutral: #9ca3af;
+  --color-flow-inbound:   #7db8ff;
+
+  /* ----- Machine kind：深色底用較亮的值 ----- */
+  --color-kind-shared:   #b39ce8;
+
+  /* ----- Quick-practice folder：資料夾壓暗，紙張不用純白以免刺眼 ----- */
+  --color-folder-back-top:    #2a4585;
+  --color-folder-back-bottom: #1b2f5e;
+  --color-folder-front-light: #5270bb;
+  --color-folder-front-dark:  #334f96;
+  --color-folder-paper:       #dfe6f4;
+  --color-folder-ink:         #253f7c;
+  --color-folder-shadow:      rgba(0, 0, 0, 0.55);
+
+  /* ----- Shadows ----- */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-glass:
+    0 4px 16px rgba(0, 0, 0, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+
+  /* ----- Flow canvas ----- */
+  --color-flow-bg: rgba(52, 63, 89, 0.471);
+  --color-flow-border: rgba(255, 255, 255, 0.06);
+  --color-flow-shadow: rgba(0, 0, 0, 0.25);
+}
+
+/* ============================================
+   Style Variants（介面風格）
+   玻璃質感為預設（data-style="glass"，變數即 :root / body.dark 原值）。
+   白底 / 黑底只把卡片等表面改為實色（白底限淺色模式、
+   黑底限深色模式，由 ThemeContext 保證），頁面背景、
+   文字、hover、Modal 遮罩都跟著明暗模式走，不在此覆寫。
+   放在 body.dark 之後，同特異度下由原始碼順序勝出。
+   ============================================ */
+
+body[data-style="white"] {
+  --color-surface-glass: #ffffff;
+  --color-surface-glass-border: #e5eaf3;
+  --color-sidebar-glass: #ffffff;
+  --color-sidebar-glass-border: #e5eaf3;
+  /* 實色表面看不到 backdrop，關掉省效能 */
+  --glass-backdrop-filter: none;
+  --sidebar-backdrop-filter: none;
+}
+
+body[data-style="black"] {
+  --color-surface-glass: #0d0d10;
+  --color-surface-glass-border: #26262b;
+  --color-sidebar-glass: #0d0d10;
+  --color-sidebar-glass-border: #26262b;
+  --glass-backdrop-filter: none;
+  --sidebar-backdrop-filter: none;
+}
+
+/* 液態玻璃（Liquid Glass）：仿真實玻璃的清透折射感——
+   清透的關鍵是把毛玻璃的重霧（blur 12px）降到 2px，改靠
+   「略提亮背後內容 + SVG 折射濾鏡
+   （index.html 的 #liquid-glass-lens，僅 Chromium 生效，其他瀏覽器
+   自動退回無折射的清透玻璃）」呈現玻璃體感。
+   表面塗層沿用主題預設不覆寫——壓到近乎全透會讓
+   半透明淡色（主色 badge / hover）在高飽和 backdrop 上偏色。
+   邊框是明顯的白色亮邊（rim highlight），陰影組合模擬凸面玻璃：
+   頂部鏡面亮線 + 底部反光 + 集中在邊緣的內側亮帶
+   （負 spread 讓中央保持清透）。明暗模式皆可用，兩套變數分開定義。
+   飽和度與毛玻璃相同（1.4）：原本拉到 1.8 以上，加上側欄塗層很透（12%），
+   帶一點色相的顏色（例如偏藍的灰）會被放大成明顯的藍。
+   側欄的塗層、亮邊、濾鏡都直接引用卡片那組，兩者看起來是同一塊玻璃
+   （側欄原本另用 12% 的近全透塗層，跟卡片的底色對不起來）。
+   外陰影用 --shadow-color-deep，跟著主色走，不再寫死深藍。 */
+body[data-style="liquid"] {
+  /* 表面塗層不覆寫，沿用主題預設（rgba 白 0.62）：
+     近乎全透的塗層會讓半透明淡色在高飽和 backdrop 上偏色 */
+  --color-surface-glass-border: rgba(255, 255, 255, 0.95);
+  --color-sidebar-glass: var(--color-surface-glass);
+  --color-sidebar-glass-border: var(--color-surface-glass-border);
+  --glass-backdrop-filter: url(#liquid-glass-lens) blur(2px) saturate(1.4) brightness(1.06);
+  --sidebar-backdrop-filter: var(--glass-backdrop-filter);
+  --shadow-glass:
+    0 12px 40px color-mix(in srgb, var(--shadow-color-deep) 18%, transparent),
+    inset 0 1px 1px rgba(255, 255, 255, 1),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.6),
+    inset 0 0 24px -10px rgba(255, 255, 255, 0.9);
+}
+
+body.dark[data-style="liquid"] {
+  /* 表面塗層同亮色模式：不覆寫，沿用深色主題預設 */
+  --color-surface-glass-border: rgba(255, 255, 255, 0.28);
+  --color-sidebar-glass: var(--color-surface-glass);
+  --color-sidebar-glass-border: var(--color-surface-glass-border);
+  --glass-backdrop-filter: url(#liquid-glass-lens) blur(2px) saturate(1.4) brightness(1.15);
+  --sidebar-backdrop-filter: var(--glass-backdrop-filter);
+  --shadow-glass:
+    0 12px 40px rgba(0, 0, 0, 0.5),
+    inset 0 1px 1px rgba(255, 255, 255, 0.35),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.14),
+    inset 0 0 24px -10px rgba(255, 255, 255, 0.22);
+}

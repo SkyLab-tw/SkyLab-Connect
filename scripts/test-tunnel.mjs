@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:net";
 import { after, test } from "node:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,7 +9,7 @@ import { build } from "esbuild";
 const bundle = await build({
   stdin: {
     contents: [
-      'export { default } from "./electron/service/WireGuardTunnelService";',
+      'export { default, elevatedCommand, elevatedExitError, windowsArgument } from "./electron/service/WireGuardTunnelService";',
       'export { default as SkyLabService } from "./electron/service/SkyLabService";',
       'export { default as PathUtils } from "./electron/utils/PathUtils";',
       'export { default as AuthService } from "./electron/service/AuthService";'
@@ -32,12 +33,8 @@ const bundle = await build({
           contents:
             args.path === "electron"
               ? `export const app = {getPath: () => globalThis.__tunnelTestDataDir},
-                  net = {}, shell = {openExternal: async () => {}}, BrowserWindow = {}, Notification = class {},
-                  safeStorage = {
-                    isEncryptionAvailable: () => true,
-                    encryptString: value => Buffer.from("enc:" + value),
-                    decryptString: value => value.toString().slice(4)
-                  };`
+net = {}, shell = {openExternal: async () => {}}, BrowserWindow = {}, Notification = class {},
+safeStorage = {isEncryptionAvailable: () => true, encryptString: value => Buffer.from("enc:" + value), decryptString: value => value.toString().slice(4)};`
               : args.path.endsWith("BeanFactory")
                 ? "export default {getBean: () => ({})};"
                 : "export default {info(){},warn(){},error(){},debug(){}};"
@@ -48,6 +45,9 @@ const bundle = await build({
 });
 const {
   default: Tunnel,
+  elevatedCommand,
+  elevatedExitError,
+  windowsArgument,
   SkyLabService,
   PathUtils,
   AuthService
@@ -97,7 +97,7 @@ test("status waits for startup instead of reporting an orphan", async () => {
   const entered = deferred(),
     finish = deferred();
   tunnel.isRunning = async () => true;
-  tunnel._readLatestHandshake = async () => null;
+  tunnel._readLatestHandshake = async () => ({ at: null, unavailable: true });
   tunnel._startTunnel = async () => {
     entered.resolve();
     await finish.promise;
@@ -141,7 +141,7 @@ test("renewal failure warns while lease is valid; expiry still blocks", async ()
   tunnel._lastStartTime = Date.now();
   tunnel._expiresAt = Date.now() + 60000;
   tunnel.isRunning = async () => true;
-  tunnel._readLatestHandshake = async () => null;
+  tunnel._readLatestHandshake = async () => ({ at: null, unavailable: true });
   tunnel._refreshTunnelLease = async () => {
     throw new Error("HTTP 502");
   };
@@ -151,74 +151,135 @@ test("renewal failure warns while lease is valid; expiry still blocks", async ()
   assert.equal(status.connectionError, null);
   assert.equal(status.leaseRefreshError, "HTTP 502");
   tunnel._expiresAt = Date.now() - 1;
-  assert.equal((await tunnel.getStatus()).running, false);
+  const expired = await tunnel.getStatus();
+  assert.equal(expired.running, false);
+  assert.equal(expired.connectionErrorCode, "B1013");
 });
 
 test("a genuinely orphaned service still requires reconnecting", async () => {
   const tunnel = new Tunnel();
   tunnel.isRunning = async () => true;
-  tunnel._readLatestHandshake = async () => null;
+  tunnel._readLatestHandshake = async () => ({ at: null, unavailable: true });
   const status = await tunnel.getStatus();
   assert.equal(status.running, false);
   assert.match(status.connectionError, /earlier app session/);
+  assert.equal(status.connectionErrorCode, "B1014");
 });
 
-// Start-Process 以空白串接 -ArgumentList；用 CommandLineToArgvW 的規則拆回來，
-// 確認含空白的安裝路徑／設定檔路徑仍是一個完整參數。
-const parseWindowsCommandLine = line => {
-  const args = [];
-  let current = "";
-  let quoted = false;
-  let started = false;
-  for (let index = 0; index < line.length; index++) {
-    const char = line[index];
-    if (char === "\\") {
-      let count = 0;
-      while (line[index] === "\\") {
-        count++;
-        index++;
-      }
-      if (line[index] === '"') {
-        current += "\\".repeat(count >> 1);
-        if (count % 2) current += '"';
-        else quoted = !quoted;
-      } else {
-        current += "\\".repeat(count);
-        index--;
-      }
-      started = true;
-    } else if (char === '"') {
-      quoted = !quoted;
-      started = true;
-    } else if (/\s/.test(char) && !quoted) {
-      if (started) args.push(current);
-      current = "";
-      started = false;
-    } else {
-      current += char;
-      started = true;
-    }
-  }
-  if (started) args.push(current);
-  return args;
-};
+test("declining UAC is reported separately from a failed admin action", () => {
+  assert.equal(elevatedExitError(0), null);
+  assert.equal(elevatedExitError(1223).bizCode, "B1011");
+  const failed = elevatedExitError(1603);
+  assert.equal(failed.bizCode, "B1012");
+  assert.match(failed.message, /exit code 1603/);
+  assert.equal(elevatedExitError(null).bizCode, "B1012");
+});
 
-test("elevated arguments with spaces survive Start-Process joining", () => {
-  const tunnel = new Tunnel();
-  const args = [
-    "/i",
-    "C:\\Program Files\\SkyLab Connect\\resources\\wireguard\\wireguard-amd64-1.1.msi",
-    "/qn",
-    "DO_NOT_LAUNCH=1",
-    "C:\\Users\\Jane Doe\\AppData\\Roaming\\SkyLab Connect\\config\\",
-    'say "hi"'
-  ];
-  const joined = args.map(value => tunnel._windowsArgument(value)).join(" ");
-  assert.deepEqual(parseWindowsCommandLine(joined), args);
+test("arguments with spaces or quotes follow Windows command-line quoting", () => {
+  assert.equal(windowsArgument("/qn"), "/qn");
   assert.equal(
-    tunnel._windowsArgument("/installtunnelservice"),
-    "/installtunnelservice"
+    windowsArgument(String.raw`C:\Program Files\SkyLab Connect\w.msi`),
+    String.raw`"C:\Program Files\SkyLab Connect\w.msi"`
   );
+  assert.equal(windowsArgument('say "hi"'), String.raw`"say \"hi\""`);
+  assert.equal(
+    windowsArgument("C:\\trailing dir\\"),
+    String.raw`"C:\trailing dir\\"`
+  );
+  assert.equal(windowsArgument(""), '""');
+});
+
+test("elevated command runs as admin and maps the UAC cancel to exit 1223", () => {
+  const command = elevatedCommand(
+    String.raw`C:\Program Files\WireGuard\wireguard.exe`,
+    ["/installtunnelservice", String.raw`C:\Users\O'Brien Lee\SkyLab.conf`]
+  );
+  assert.ok(
+    command.includes(
+      String.raw`$psi.FileName = 'C:\Program Files\WireGuard\wireguard.exe';`
+    )
+  );
+  assert.ok(
+    command.includes(
+      String.raw`$psi.Arguments = '/installtunnelservice "C:\Users\O''Brien Lee\SkyLab.conf"';`
+    )
+  );
+  assert.ok(command.includes("$psi.Verb = 'runas';"));
+  assert.match(command, /NativeErrorCode -eq 1223\) \{ exit 1223 \}/);
+  assert.match(command, /exit \$p\.ExitCode$/);
+});
+
+test("a changed network configuration asks for a reconnect with its own code", async () => {
+  const tunnel = new Tunnel();
+  tunnel._lastStartTime = Date.now();
+  tunnel._expiresAt = Date.now() + 60_000;
+  tunnel._activeConfigFingerprint = "before";
+  tunnel.isRunning = async () => true;
+  tunnel._readLatestHandshake = async () => ({ at: null, unavailable: true });
+  tunnel._probeAuthorizedTargets = async () => false;
+  tunnel._activeIdentity = { deviceId: "device-1" };
+  tunnel._activeIdentityScope = "test-scope";
+  tunnel._SkyLabService = {
+    getConnectionScope: async () => "test-scope",
+    refreshWireGuard: async () => ({})
+  };
+  tunnel._configFingerprint = () => "after";
+  await assert.rejects(
+    tunnel.refreshTunnel(),
+    error => error.bizCode === "B1015"
+  );
+  const status = await tunnel.getStatus();
+  assert.equal(status.connectionErrorCode, "B1015");
+});
+
+test("reachable authorized SSH target confirms the tunnel when wg inspection is denied", async () => {
+  const tunnel = new Tunnel();
+  tunnel._lastStartTime = Date.now();
+  tunnel._expiresAt = Date.now() + 60_000;
+  tunnel._connections = [
+    { vmid: 106, service: "ssh", host: "192.168.60.106", port: 22 }
+  ];
+  tunnel.isRunning = async () => true;
+  tunnel._readLatestHandshake = async () => ({ at: null, unavailable: true });
+  tunnel._probeAuthorizedTargets = async () => true;
+
+  const status = await tunnel.getStatus();
+  assert.equal(status.running, true);
+  assert.equal(status.connected, true);
+  assert.equal(status.handshakeUnavailable, true);
+  assert.equal(status.latestHandshakeAt, null);
+});
+
+test("unreadable handshake without reachable targets does not claim a connection", async () => {
+  const tunnel = new Tunnel();
+  tunnel._lastStartTime = Date.now();
+  tunnel._expiresAt = Date.now() + 60_000;
+  tunnel._connections = [
+    { vmid: 106, service: "ssh", host: "192.168.60.106", port: 22 }
+  ];
+  tunnel.isRunning = async () => true;
+  tunnel._readLatestHandshake = async () => ({ at: null, unavailable: true });
+  tunnel._probeAuthorizedTargets = async () => false;
+
+  const status = await tunnel.getStatus();
+  assert.equal(status.running, true);
+  assert.equal(status.connected, false);
+  assert.equal(status.handshakeUnavailable, true);
+});
+
+test("authorized target probe detects an open TCP port", async () => {
+  const server = createServer(socket => socket.end());
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    const tunnel = new Tunnel();
+    assert.equal(
+      await tunnel._probeTarget({ host: "127.0.0.1", port: address.port }),
+      true
+    );
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
 });
 
 const jwt = (sub, extra = {}) =>
@@ -377,7 +438,7 @@ test("Web account switch followed by desktop logout and sign-in uses the new acc
   tunnel._removeLocalTunnelService = async () => {};
   tunnel._runElevatedWireGuard = async () => {};
   tunnel._waitUntilRunning = async () => true;
-  tunnel._readLatestHandshake = async () => null;
+  tunnel._readLatestHandshake = async () => ({ at: null, unavailable: true });
   tunnel._buildConfig = () => "[Interface]";
   tunnel.isRunning = async () => true;
   await tunnel.startTunnel();

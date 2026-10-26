@@ -1,0 +1,109 @@
+name: Release
+
+# 推送版本 tag（例如 v0.2.0-beta.19）時重跑全部檢查，建置未簽章的安裝版與免安裝版，
+# 連同原始碼 ZIP 和 SHA256SUMS.txt 直接發佈成最新版。檔名要跟舊版一致：
+# 更新器只認 SkyLab-Connect-Setup.exe，平台的下載連結也指向它。
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Windows release
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Check tag, version and release notes
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match package.json version $version"
+            exit 1
+          fi
+          # 0.2.0-beta.19 → release-notes-beta19.md；正式版 0.2.0 → release-notes-v0.2.0.md
+          prerelease=${version#*-}
+          if [ "$prerelease" = "$version" ]; then label="v$version"; else label=${prerelease//./}; fi
+          notes="docs/releases/release-notes-$label.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::Missing release notes $notes"
+            exit 1
+          fi
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::Release $TAG already exists; bump the version instead of replacing it"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "NOTES=$notes" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Electron service regression tests
+        run: npm test
+
+      - name: Audit dependencies
+        run: npm run audit:security
+
+      - name: Production build
+        run: npm run build
+
+      - name: Test connection status after operation failures
+        run: npm run test:connection-ui
+
+      - name: Build unsigned installer and portable
+        run: npm run build:electron:win:unsigned
+
+      - name: Package source, checksums and release notes
+        run: |
+          assets=release/publish
+          source_zip="SkyLab-Connect-Source-$TAG.zip"
+          mkdir -p "$assets"
+          cp "release/$VERSION/SkyLab-Connect-Setup.exe" "release/$VERSION/SkyLab-Connect-Portable.exe" "$assets/"
+          printf 'Version: %s\nSource commit: %s\nBuild: npm ci; npm run build:electron:win:unsigned\n' \
+            "$TAG" "$GITHUB_SHA" > release/BUILD_INFO.txt
+          git archive --format=zip --add-file=release/BUILD_INFO.txt -o "$assets/$source_zip" "$GITHUB_SHA"
+          (cd "$assets" && sha256sum -b SkyLab-Connect-Setup.exe SkyLab-Connect-Portable.exe "$source_zip" > SHA256SUMS.txt)
+          {
+            sed "s/{source_commit}/$GITHUB_SHA/g" "$NOTES"
+            printf '\n\nSHA-256\n'
+            while read -r hash name; do printf -- '- %s: %s\n' "${name#\*}" "$hash"; done < "$assets/SHA256SUMS.txt"
+          } > release/release-notes.md
+
+      - name: Publish release
+        run: |
+          gh release create "$TAG" \
+            --verify-tag \
+            --latest \
+            --title "SkyLab Connect $TAG" \
+            --notes-file release/release-notes.md \
+            release/publish/SkyLab-Connect-Setup.exe \
+            release/publish/SkyLab-Connect-Portable.exe \
+            "release/publish/SkyLab-Connect-Source-$TAG.zip" \
+            release/publish/SHA256SUMS.txt

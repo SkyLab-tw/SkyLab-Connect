@@ -1,51 +1,63 @@
 SkyLab Connect — Third-party notices
 
-SkyLab Connect is part of SkyLab and is licensed under the GNU Affero General
-Public License v3.0. Source code: https://github.com/ntubclass/SkyLab
-(the full license text is in the LICENSE file of that repository).
+SkyLab Connect is licensed under AGPL-3.0.
+Source code: https://github.com/SkyLab-tw/SkyLab-Connect
+Full license and original template notices: LICENSE and NOTICE in that repository.
 
-This application is built with the open-source components listed below.
-Each component remains under its own license; the "About" page inside the
-application shows the exact versions bundled with this build.
-
-Runtime
-  Electron                          MIT      https://github.com/electron/electron
-  Vue 3                             MIT      https://github.com/vuejs/core
-  Vue Router                        MIT      https://github.com/vuejs/router
-  Pinia                             MIT      https://github.com/vuejs/pinia
-  vue-i18n                          MIT      https://github.com/intlify/vue-i18n
-  Element Plus                      MIT      https://github.com/element-plus/element-plus
-  @vueuse/core                      MIT      https://github.com/vueuse/vueuse
-  @seald-io/nedb                    MIT      https://github.com/seald/nedb
-  electron-log                      MIT      https://github.com/megahertz/electron-log
-  tree-kill                         MIT      https://github.com/pkrumins/node-tree-kill
-  animate.css                       MIT      https://github.com/animate-css/animate.css
-  @iconify/vue                      MIT      https://github.com/iconify/iconify
-  Material Symbols (@iconify)       Apache-2.0  https://github.com/google/material-design-icons
+Application runtime
+  @material-design-icons/font      Apache-2.0       https://github.com/marella/material-design-icons
+  electron                         MIT              https://github.com/electron/electron
+  @seald-io/nedb                   MIT              https://github.com/seald/nedb
+  electron-log                     MIT              https://github.com/megahertz/electron-log
+  element-plus                     MIT              https://github.com/element-plus/element-plus
+  pinia                            MIT              https://github.com/vuejs/pinia
+  tree-kill                        MIT              https://github.com/pkrumins/node-tree-kill
+  vue                              MIT              https://github.com/vuejs/core
+  vue-i18n                         MIT              https://github.com/intlify/vue-i18n
+  vue-router                       MIT              https://github.com/vuejs/router
 
 Bundled networking components
-  WireGuard for Windows             MIT         https://git.zx2c4.com/wireguard-windows/
-  The unmodified, Authenticode-signed MSI from the official WireGuard download
-  server is shipped in the "wireguard" folder next to this file on Windows,
-  together with its own THIRD_PARTY_NOTICES.txt. It is installed only when
-  WireGuard for Windows is not already present and is not removed when SkyLab
-  Connect is uninstalled, because other applications may share it.
+  WireGuard for Windows             MIT      https://git.zx2c4.com/wireguard-windows/
+  The unmodified, Authenticode-signed MSI is shipped in the wireguard folder
+  with its own THIRD_PARTY_NOTICES.txt. Other applications may share this
+  installation; uninstalling SkyLab Connect does not remove WireGuard.
 
   WireGuard for macOS               MIT / GPL-2.0
-    wireguard-go                    MIT         https://git.zx2c4.com/wireguard-go/
-    wireguard-tools (wg)            GPL-2.0     https://git.zx2c4.com/wireguard-tools/
-  On macOS, Universal (x86_64 + arm64) builds of wireguard-go and wg are shipped
-  in the "wireguard" folder next to this file, together with their own
-  THIRD_PARTY_NOTICES.txt. They are invoked as standalone executables to
-  configure the local utun tunnel interface.
+    wireguard-go                    MIT      https://git.zx2c4.com/wireguard-go/
+    wireguard-tools (wg)            GPL-2.0  https://git.zx2c4.com/wireguard-tools/
+  Universal (x86_64 + arm64) builds of wireguard-go and wg are shipped in the
+  wireguard folder with their own THIRD_PARTY_NOTICES.txt. They run as
+  standalone executables to configure the local utun tunnel interface.
+
+The About page shows the exact dependency versions included in this build.
+Complete client dependency records: package-lock.json and THIRD_PARTY_NOTICES.md
+in the source repository. Build tooling is not part of the shipped runtime.
+
+----------------------------------------------------------------------------
 
 Application template
-  Electron + Vue 3 + Vite template  MIT      Copyright (c) 2023 刘嘉伟
-  Portions of the application scaffolding derive from this template; its full
-  MIT notice is reproduced in the NOTICE file of the repository.
 
-Build tooling (Vite, TypeScript, electron-builder, ESLint, Tailwind CSS) is
-used to produce this application and is not distributed with it.
+SkyLab Connect started from an Electron + Vue 3 + Vite template by 刘嘉伟,
+distributed under the MIT License:
 
-The complete list for the whole SkyLab project, including the backend and the
-web frontend, is kept at THIRD_PARTY_NOTICES.md in the repository.
+MIT License
+
+Copyright (c) 2023 刘嘉伟
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

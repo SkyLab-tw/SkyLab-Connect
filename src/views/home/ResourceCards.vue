@@ -1,7 +1,8 @@
 <script lang="ts" setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import AppIcon from "@/components/AppIcon.vue";
+import AppDialog from "@/components/AppDialog.vue";
+import MIcon from "@/components/MIcon.vue";
 import {
   canConnectResource,
   resourceTargets,
@@ -15,10 +16,23 @@ const props = defineProps<{
   busy: boolean;
 }>();
 const emit = defineEmits<{
-  ssh: [target: { host: string; port: number }];
-  rdp: [target: { host: string; port: number }];
+  ssh: [target: { vmid: number; host: string; port: number }];
+  rdp: [target: { vmid: number; host: string; port: number }];
 }>();
 const { t } = useI18n();
+/* 狀態徽章配色同 web「我的資源」的 STATUS_MAP */
+const STATUS_TONE: Record<string, string> = {
+  running: "success",
+  scheduled: "info",
+  provisioning: "info",
+  starting: "info",
+  failed: "danger",
+  deleting: "danger",
+  deleted: "danger"
+};
+const statusTone = (status: string) => STATUS_TONE[status] ?? "muted";
+const isSsh = (target: SkyLabTunnelInfo) =>
+  String(target.service).toLowerCase() === "ssh";
 const selected = ref<SkyLabResource | null>(null);
 const selectedResource = computed(
   () =>
@@ -56,8 +70,12 @@ const reason = (resource: SkyLabResource) => {
 const connect = (resource: SkyLabResource, target: SkyLabTunnelInfo) => {
   if (props.busy || !canConnectResource(resource, target, props.connected))
     return;
-  const destination = { host: String(target.host), port: Number(target.port) };
-  if (String(target.service).toLowerCase() === "ssh") emit("ssh", destination);
+  const destination = {
+    vmid: Number(resource.vmid),
+    host: String(target.host),
+    port: Number(target.port)
+  };
+  if (isSsh(target)) emit("ssh", destination);
   else emit("rdp", destination);
 };
 const showDetails = (resource: SkyLabResource) => {
@@ -85,18 +103,25 @@ const date = (value?: string | null) =>
       :class="{ 'resource-card--blocked': !!block(resource) }"
     >
       <div class="resource-card-heading">
-        <div
-          class="resource-status"
-          :class="{
-            'is-running': resource.status === 'running',
-            'is-failed': resource.status === 'failed'
-          }"
+        <span
+          class="sl-badge"
+          :class="`sl-badge--${statusTone(resource.status)}`"
+          >{{ t(`resources.status.${resource.status}`) }}</span
         >
-          <span class="sl-dot" />{{ t(`resources.status.${resource.status}`) }}
-        </div>
         <h3>{{ resource.name }}</h3>
       </div>
-      <div class="resource-address">{{ resource.ip_address || "—" }}</div>
+      <button
+        type="button"
+        class="sl-btn-icon resource-info"
+        :aria-label="t('workspace.detailsFor', { name: resource.name })"
+        :title="t('workspace.details')"
+        @click="showDetails(resource)"
+      >
+        <MIcon name="info" :size="18" />
+      </button>
+      <div class="resource-address" data-selectable>
+        {{ resource.ip_address || "—" }}
+      </div>
       <div class="resource-card-actions">
         <template
           v-if="
@@ -108,19 +133,17 @@ const date = (value?: string | null) =>
           <button
             v-for="target in targets(resource)"
             :key="`${target.service}:${target.host}:${target.port}`"
-            class="sl-button resource-launch"
+            type="button"
+            class="resource-launch"
             :disabled="!connectable(resource, target)"
             @click="connect(resource, target)"
           >
-            <AppIcon
-              :name="
-                String(target.service).toLowerCase() === 'ssh'
-                  ? 'terminal'
-                  : 'monitor'
-              "
+            <MIcon
+              :name="isSsh(target) ? 'terminal' : 'desktop_windows'"
+              :size="16"
             />{{
               t(
-                String(target.service).toLowerCase() === "ssh"
+                isSsh(target)
                   ? "home.tunnels.connectSsh"
                   : "home.tunnels.connectRdp"
               )
@@ -133,18 +156,10 @@ const date = (value?: string | null) =>
           :class="{ 'is-expired': block(resource) === 'window_ended' }"
           >{{ reason(resource) }}</span
         >
-        <button
-          class="sl-icon-button resource-info"
-          :aria-label="t('workspace.detailsFor', { name: resource.name })"
-          :title="t('workspace.details')"
-          @click="showDetails(resource)"
-        >
-          <AppIcon name="info" />
-        </button>
       </div>
     </article>
   </div>
-  <el-dialog
+  <AppDialog
     v-model="detailsOpen"
     :title="t('workspace.details')"
     width="540px"
@@ -211,10 +226,10 @@ const date = (value?: string | null) =>
         <dd>{{ reason(selectedResource) }}</dd>
       </div>
     </dl>
-    <template #footer
-      ><el-button @click="detailsOpen = false">{{
-        t("workspace.close")
-      }}</el-button></template
-    >
-  </el-dialog>
+    <template #footer>
+      <button type="button" class="sl-btn-primary" @click="detailsOpen = false">
+        {{ t("workspace.close") }}
+      </button>
+    </template>
+  </AppDialog>
 </template>

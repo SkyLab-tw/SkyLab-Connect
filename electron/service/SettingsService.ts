@@ -1,9 +1,18 @@
-﻿import { app } from "electron";
-import GlobalConstant from "../core/GlobalConstant";
+import { app } from "electron";
+import { BusinessError, ResponseCode } from "../core/BusinessError";
 import Logger from "../core/Logger";
 import SettingsRepository, {
   type SettingsPatch
 } from "../repository/SettingsRepository";
+import BackendUrlUtils, { BackendUrlProblem } from "../utils/BackendUrlUtils";
+
+/* 存檔被擋下時回給畫面的訊息（設定頁會先用同一套規則即時提示，正常不會走到這裡） */
+const BACKEND_URL_ERRORS: Record<BackendUrlProblem, string> = {
+  required: "Backend URL is invalid",
+  invalid: "Backend URL is invalid",
+  insecure: "Backend URL must use HTTPS",
+  credentials: "Backend URL must not contain credentials"
+};
 
 class SettingsService {
   private readonly _repo: SettingsRepository;
@@ -16,11 +25,6 @@ class SettingsService {
     return this._repo.get();
   }
 
-  /**
-   * 存一般設定（語言、後端網址、開機啟動）。token 不經過這裡，一律走
-   * setTokens／clearTokens：兩邊各自只改自己的欄位，同時進行也不會互相蓋掉。
-   * 後端網址改變時由 repository 在同一次寫入中清掉 token。
-   */
   async save(patch: Partial<SkyLabSettings>): Promise<SkyLabSettings> {
     const safePatch: SettingsPatch = {};
     if (typeof patch.language === "string") safePatch.language = patch.language;
@@ -72,36 +76,19 @@ class SettingsService {
     await this.setTokens("", "");
   }
 
+  /** 還沒填學校的平台網址就丟錯，不會自己補一個預設網址 */
   async getBackendUrl(): Promise<string> {
-    const settings = await this.get();
-    try {
-      return this.normalizeBackendUrl(settings.backendUrl);
-    } catch {
-      const migrated = await this.save({
-        backendUrl: GlobalConstant.DEFAULT_BACKEND_URL
-      });
-      return migrated.backendUrl;
-    }
+    const result = BackendUrlUtils.parse((await this.get()).backendUrl);
+    if (result.ok === false)
+      throw new BusinessError(ResponseCode.BACKEND_NOT_CONFIGURED);
+    return result.url;
   }
 
   private normalizeBackendUrl(value: string): string {
-    let url: URL;
-    try {
-      url = new URL(value.trim());
-    } catch {
-      throw new Error("Backend URL is invalid");
-    }
-    const isLocal =
-      url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    if (url.protocol !== "https:" && !(isLocal && url.protocol === "http:")) {
-      throw new Error("Backend URL must use HTTPS");
-    }
-    if (url.username || url.password || url.search || url.hash) {
-      throw new Error(
-        "Backend URL must not contain credentials, query, or fragment"
-      );
-    }
-    return url.toString().replace(/\/$/, "");
+    const result = BackendUrlUtils.parse(value);
+    if (result.ok === false)
+      throw new Error(BACKEND_URL_ERRORS[result.problem]);
+    return result.url;
   }
 }
 

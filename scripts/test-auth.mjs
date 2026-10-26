@@ -41,6 +41,10 @@ const bundle = await build({
     {
       name: "auth-runtime",
       setup(builder) {
+        builder.onResolve({ filter: /^@\/utils\/errors$/ }, () => ({
+          path: "errors",
+          namespace: "fake"
+        }));
         builder.onResolve({ filter: /^@\// }, args => ({
           path: path.join(process.cwd(), "src", `${args.path.slice(2)}.ts`)
         }));
@@ -55,13 +59,15 @@ const bundle = await build({
           { filter: /.*/, namespace: "fake" },
           ({ path: name }) => ({
             contents:
-              name === "electron"
-                ? "export const shell = {openExternal: (...args) => globalThis.__authTest.openExternal(...args)};"
-                : name === "element-plus"
-                  ? "export const ElMessage = value => globalThis.__authTest.toasts.push(value);"
-                  : name === "../router"
-                    ? 'export default {currentRoute: {value: {name: "Home"}}, replace: async () => {}};'
-                    : "export default {info(){},warn(){},error(){}};"
+              name === "errors"
+                ? "export const NOT_LOGGED_IN = 'B1001'; export const describeError = code => code; export const toastError = code => globalThis.__authTest.toasts.push(code);"
+                : name === "electron"
+                  ? "export const shell = {openExternal: (...args) => globalThis.__authTest.openExternal(...args)};"
+                  : name === "element-plus"
+                    ? "export const ElMessage = value => globalThis.__authTest.toasts.push(value);"
+                    : name === "../router"
+                      ? 'export default {currentRoute: {value: {name: "Home"}}, replace: async () => {}};'
+                      : "export default {info(){},warn(){},error(){}};"
           })
         );
       }
@@ -127,7 +133,10 @@ beforeEach(() => {
   };
   service = new AuthService(
     api,
-    { setTokens: async (...pair) => tokens.push(pair) },
+    {
+      getBackendUrl: async () => "https://example.org",
+      setTokens: async (...pair) => tokens.push(pair)
+    },
     {}
   );
   setActivePinia(createPinia());
@@ -152,7 +161,8 @@ test("browser denial ends login and permits a fresh retry", async () => {
   await start();
   await poll();
   assert.equal(service.isLoginInProgress(), false);
-  assert.deepEqual(results, [[false, undefined, "B1003"]]);
+  assert.equal(results[0][0], false);
+  assert.equal(results[0][1].bizCode, "B1003");
   await start();
   assert.equal(timers.size, 1);
 });
@@ -212,7 +222,7 @@ test("approval saves one token pair and emits one result", async () => {
   await start();
   await poll();
   assert.deepEqual(tokens, [["access", "refresh"]]);
-  assert.deepEqual(results, [[true, undefined, undefined]]);
+  assert.deepEqual(results, [[true, undefined]]);
   assert.equal(timers.size, 0);
 });
 
@@ -230,7 +240,7 @@ test("browser-open failure and timeout both release the login lock", async () =>
   });
   await start();
   await poll();
-  assert.equal(results[0][2], "B1002");
+  assert.equal(results[0][1].bizCode, "B1002");
   assert.equal(service.isLoginInProgress(), false);
 });
 
@@ -258,17 +268,92 @@ test("cancel and failure leave the renderer ready to retry without duplicate err
   store.startLogin();
   reply("auth:event", { type: "login-cancelled" });
   assert.equal(store.loginInProgress, false);
-  assert.equal(store.loginError, "");
+  assert.equal(store.loginErrorCode, "");
   store.startLogin();
   reply(`${ipcRouters.AUTH.startLogin.path}:hook`, null, "B1000");
   assert.equal(store.loginInProgress, false);
-  assert.equal(store.loginError, "request failed");
+  assert.equal(store.loginErrorCode, "B1000");
   assert.deepEqual(toasts, []);
   store.startLogin();
   assert.equal(store.loginInProgress, true);
-  assert.equal(store.loginError, "");
+  assert.equal(store.loginErrorCode, "");
   store.cancelLogin();
   reply("auth:event", { type: "login-success" });
   assert.equal(store.loggedIn, false);
   assert.equal(sent.at(-1).channel, ipcRouters.AUTH.cancelLogin.path);
+});
+
+test("rapid auto-applied settings queue the latest choices without reverting the UI", () => {
+  store.saveSettings({ language: "ja" });
+  store.saveSettings({ language: "en-US" });
+  store.saveSettings({ launchAtStartup: true });
+  assert.equal(store.language, "en-US");
+  assert.equal(store.autoStart, true);
+  assert.equal(sent.length, 1);
+  reply(`${ipcRouters.SETTINGS.saveSettings.path}:hook`, {
+    language: "ja",
+    launchAtStartup: false
+  });
+  assert.equal(store.language, "en-US");
+  assert.equal(store.autoStart, true);
+  assert.deepEqual(sent.at(-1).args, {
+    language: "en-US",
+    launchAtStartup: true
+  });
+  reply(`${ipcRouters.SETTINGS.saveSettings.path}:hook`, {
+    language: "en-US",
+    launchAtStartup: true
+  });
+  assert.equal(store.settingsSaving, false);
+  assert.equal(store.queuedSettingsPatch, null);
+  assert.deepEqual(toasts, []);
+});
+
+test("a settings refresh cannot overwrite a selection while it is being saved", () => {
+  store.saveSettings({ language: "ja" });
+  reply(`${ipcRouters.SETTINGS.getSettings.path}:hook`, {
+    language: "zh-TW",
+    launchAtStartup: false
+  });
+  assert.equal(store.language, "ja");
+  reply(`${ipcRouters.SETTINGS.saveSettings.path}:hook`, {
+    language: "ja",
+    launchAtStartup: false
+  });
+});
+
+test("auto-apply failure clears pending changes and reloads persisted settings", () => {
+  store.saveSettings({ language: "ja" });
+  store.saveSettings({ language: "en-US" });
+  reply(`${ipcRouters.SETTINGS.saveSettings.path}:hook`, null, "B1000");
+  assert.equal(store.settingsErrorCode, "B1000");
+  assert.equal(store.settingsSaving, false);
+  assert.equal(store.queuedSettingsPatch, null);
+  assert.equal(sent.at(-1).channel, ipcRouters.SETTINGS.getSettings.path);
+  reply(`${ipcRouters.SETTINGS.getSettings.path}:hook`, {
+    language: "zh-TW",
+    launchAtStartup: false
+  });
+  assert.equal(store.language, "zh-TW");
+});
+
+test("changing servers still logs out before saving and preserves queued language changes", () => {
+  store.loggedIn = true;
+  store.saveSettings({ backendUrl: "https://new.example.org" });
+  assert.equal(sent.at(-1).channel, ipcRouters.AUTH.logout.path);
+  store.saveSettings({ language: "ja" });
+  reply(`${ipcRouters.AUTH.logout.path}:hook`);
+  assert.equal(sent.at(-1).channel, ipcRouters.SETTINGS.saveSettings.path);
+  assert.deepEqual(sent.at(-1).args, { backendUrl: "https://new.example.org" });
+  reply(`${ipcRouters.SETTINGS.saveSettings.path}:hook`, {
+    backendUrl: "https://new.example.org",
+    language: "zh-TW"
+  });
+  assert.equal(store.language, "ja");
+  assert.deepEqual(sent.at(-1).args, { language: "ja" });
+  reply(`${ipcRouters.SETTINGS.saveSettings.path}:hook`, {
+    backendUrl: "https://new.example.org",
+    language: "ja"
+  });
+  assert.equal(store.settingsSaving, false);
 });

@@ -47,7 +47,7 @@ const buildAboutInfo = () => {
   return {
     license: "AGPL-3.0",
     repository:
-      process.env.SKYLAB_REPO_URL || "https://github.com/ntubclass/SkyLab",
+      process.env.SKYLAB_REPO_URL || "https://github.com/SkyLab-tw/SkyLab-Connect",
     dependencies
   };
 };
@@ -67,7 +67,12 @@ export default defineConfig(({ command }) => {
     css: {
       preprocessorOptions: {
         scss: {
-          api: "modern-compiler"
+          api: "modern-compiler",
+          // 跟 web 端同一套 SCSS 變數與 mixin（frontend/vite.config.js 也是這樣注入）：
+          // 直接 import 的 web 樣式檔（global.scss、各元件 module）才編得過，桌面端也不必再抄一份
+          additionalData: `@use "@web/assets/styles/variables" as *;
+@use "@web/assets/styles/mixins" as *;
+`
         }
       } as any
     },
@@ -128,7 +133,9 @@ export default defineConfig(({ command }) => {
     resolve: {
       alias: {
         "@": pathResolve("src"),
-        "@build": pathResolve("build")
+        "@build": pathResolve("build"),
+        // web 前端原始碼：共用色票、mixin 與元件樣式（PixelOcto 也從這裡拿章魚）
+        "@web": pathResolve("src/shared/web")
       }
     },
     // Keep the Electron renderer separate from the web frontend on :5173.
