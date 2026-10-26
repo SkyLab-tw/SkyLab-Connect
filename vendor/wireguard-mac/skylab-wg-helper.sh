@@ -168,6 +168,12 @@ cmd_handshake() {
 
 cmd_install() {
   require_root
+  # sudoers 讓 staff 免密碼執行已安裝的 helper；install 若能經由 sudo 呼叫，
+  # 一般使用者就能換掉 root 會執行的 wireguard-go。只接受 App 透過系統管理員授權
+  # 直接執行打包內的腳本。
+  if [ -n "${SUDO_USER:-}" ] || [ "$0" = "$HELPER_BIN" ]; then
+    die "install must be authorized by an administrator, not run through sudo."
+  fi
   src_dir="${1:-}"
   version_hash="${2:-}"
   if [ -z "$src_dir" ] || [ ! -d "$src_dir" ]; then
@@ -184,10 +190,9 @@ cmd_install() {
   if [ ! -f "$wg_go_src" ] || [ ! -f "$src_dir/wg" ] || [ ! -f "$src_dir/skylab-wg-helper.sh" ]; then
     die "Required WireGuard binaries are missing from source directory."
   fi
-  case "$version_hash" in
-    [a-f0-9]*) ;;
-    *) die "Invalid version hash." ;;
-  esac
+  if ! printf '%s' "$version_hash" | grep -Eq '^[a-f0-9]{64}$'; then
+    die "Invalid version hash."
+  fi
 
   mkdir -p "$INSTALL_DIR"
   chown root:wheel "/Library/Application Support/SkyLabConnect" "$INSTALL_DIR"
@@ -211,8 +216,14 @@ cmd_install() {
   mkdir -p /etc/sudoers.d
   sudoers_tmp="$SUDOERS_FILE.tmp"
   cat > "$sudoers_tmp" <<'EOF'
-Defaults!/Library/Application\ Support/SkyLabConnect/wireguard/skylab-wg-helper !requiretty, env_reset
-%staff ALL=(root) NOPASSWD: /Library/Application\ Support/SkyLabConnect/wireguard/skylab-wg-helper
+Cmnd_Alias SKYLAB_WG = \
+  /Library/Application\ Support/SkyLabConnect/wireguard/skylab-wg-helper check, \
+  /Library/Application\ Support/SkyLabConnect/wireguard/skylab-wg-helper status, \
+  /Library/Application\ Support/SkyLabConnect/wireguard/skylab-wg-helper handshake, \
+  /Library/Application\ Support/SkyLabConnect/wireguard/skylab-wg-helper down, \
+  /Library/Application\ Support/SkyLabConnect/wireguard/skylab-wg-helper up *
+Defaults!SKYLAB_WG !requiretty, env_reset
+%staff ALL=(root) NOPASSWD: SKYLAB_WG
 EOF
   chown root:wheel "$sudoers_tmp"
   chmod 0440 "$sudoers_tmp"
