@@ -221,11 +221,14 @@ class SkyLabService {
     return JSON.parse(res.body) as SkyLabResource[];
   }
 
-  /** Resolve the incarnation from the authenticated API, never renderer input.
-   * A replacement VM may reuse both the address and VMID, but gets a new request.
-   * Legacy resources without an incarnation retain normal address-based checks.
+  /** Resolve the incarnation and resource type from the authenticated API,
+   * never renderer input. A replacement VM may reuse both the address and VMID,
+   * but gets a new request. Legacy resources without an incarnation retain
+   * normal address-based checks (hostKeyAlias is undefined).
    */
-  async getSshHostAlias(vmid: number): Promise<string | undefined> {
+  async getSshTarget(
+    vmid: number
+  ): Promise<{ hostKeyAlias?: string; resourceType: string }> {
     if (!Number.isSafeInteger(vmid) || vmid <= 0) {
       throw new Error("Invalid SSH resource");
     }
@@ -240,22 +243,25 @@ class SkyLabService {
     if (resource.vmid !== vmid || resource.can_control === false) {
       throw new Error("SSH resource is not available");
     }
-    if (!resource.request_id) return undefined;
+    const resourceType = String(resource.type ?? "");
+    if (!resource.request_id) return { resourceType };
     if ((await this._settingsService.getBackendUrl()) !== backendUrl) {
       throw new Error("The server changed while opening SSH");
     }
-    return (
-      "skylab-" +
-      createHash("sha256")
-        .update(
-          JSON.stringify([
-            backendUrl.replace(/\/$/, ""),
-            vmid,
-            resource.request_id
-          ])
-        )
-        .digest("hex")
-    );
+    return {
+      hostKeyAlias:
+        "skylab-" +
+        createHash("sha256")
+          .update(
+            JSON.stringify([
+              backendUrl.replace(/\/$/, ""),
+              vmid,
+              resource.request_id
+            ])
+          )
+          .digest("hex"),
+      resourceType
+    };
   }
 
   async listQuickPracticeSessions(): Promise<SkyLabQuickPracticeSession[]> {

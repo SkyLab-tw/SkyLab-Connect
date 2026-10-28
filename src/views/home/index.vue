@@ -11,8 +11,14 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ipcRouters } from "../../../electron/core/IpcRouter";
 import BackendUrlUtils from "../../../electron/utils/BackendUrlUtils";
+import SshLoginUtils from "../../../electron/utils/SshLoginUtils";
+import {
+  rememberedSshUsername,
+  rememberSshUsername
+} from "@/utils/sshUsernames";
 import ResourceCards from "./ResourceCards.vue";
 import RdpHelpDialog from "./RdpHelpDialog.vue";
+import SshLoginDialog from "./SshLoginDialog.vue";
 import EmptyState from "@/components/EmptyState.vue";
 import LoadingState from "@/components/LoadingState.vue";
 import MIcon from "@/components/MIcon.vue";
@@ -324,12 +330,32 @@ const refreshAfterNetworkRecovery = () => {
   if (appStore.tunnelStatus.running) refresh();
 };
 
-const openSsh = (target: { vmid: number; host: string; port: number }) => {
+type SshTarget = { vmid: number; host: string; port: number };
+/* VM 要先問登入帳號（申請時自訂，平台不帶）；容器固定 root，直接開終端機 */
+const sshLogin = ref<{ target: SshTarget; machineName: string } | null>(null);
+const sshLoginOpen = ref(false);
+const launchSsh = (target: SshTarget, username?: string) => {
   if (loading.value || openingConnection.value || status.value !== "running")
     return;
   openingConnection.value = true;
   operationError.value = null;
-  send(ipcRouters.SYSTEM.openSsh, target);
+  send(ipcRouters.SYSTEM.openSsh, username ? { ...target, username } : target);
+};
+const openSsh = (target: SshTarget, resource: SkyLabResource) => {
+  if (loading.value || openingConnection.value || status.value !== "running")
+    return;
+  if (SshLoginUtils.isContainer(resource.type)) {
+    launchSsh(target);
+    return;
+  }
+  sshLogin.value = { target, machineName: resource.name };
+  sshLoginOpen.value = true;
+};
+const confirmSshLogin = (username: string) => {
+  const pending = sshLogin.value;
+  if (!pending) return;
+  rememberSshUsername(appStore.backendUrl, pending.target.vmid, username);
+  launchSsh(pending.target, username);
 };
 
 const openRdp = (target: { host: string; port: number }) => {
@@ -687,4 +713,14 @@ onUnmounted(() => {
     />
   </main>
   <RdpHelpDialog v-model="rdpHelpOpen" :error-code="rdpErrorCode" />
+  <SshLoginDialog
+    v-model="sshLoginOpen"
+    :machine-name="sshLogin?.machineName ?? ''"
+    :initial-username="
+      sshLogin
+        ? rememberedSshUsername(appStore.backendUrl, sshLogin.target.vmid)
+        : ''
+    "
+    @confirm="confirmSshLogin"
+  />
 </template>

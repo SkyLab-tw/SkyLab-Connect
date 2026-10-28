@@ -105,6 +105,16 @@
     failure: "Sign-in failed: {error}"
   },
   home: {
+    sshLogin: {
+      title: "SSH login username",
+      description:
+        "Enter the login username for this virtual machine (the username you set when requesting it). After you connect, enter the password in the terminal.",
+      label: "Username",
+      placeholder: "e.g. student",
+      invalid:
+        "Use letters, digits, underscores or hyphens, starting with a letter or underscore, up to 32 characters.",
+      confirm: "Connect"
+    },
     rdpHelp: {
       title: "Remote desktop is unavailable",
       linux:
@@ -294,6 +304,7 @@
     B1020:
       "Couldn't reach the machine's RDP port. First check that the machine is running and the secure connection is working.",
     B1021:
-      "The school platform URL isn't set yet. Enter the address of your school's SkyLab platform first."
+      "The school platform URL isn't set yet. Enter the address of your school's SkyLab platform first.",
+    B1023: "Enter a valid SSH login username, then connect again."
   }
 };

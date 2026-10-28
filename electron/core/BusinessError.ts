@@ -22,7 +22,8 @@ enum ResponseCode {
   OPEN_FAILED = "B1018;Could not open the requested item.",
   RDP_REFUSED = "B1019;The machine refused the RDP connection.",
   RDP_UNREACHABLE = "B1020;The RDP endpoint could not be reached.",
-  BACKEND_NOT_CONFIGURED = "B1021;The school platform URL is not set."
+  BACKEND_NOT_CONFIGURED = "B1021;The school platform URL is not set.",
+  SSH_USERNAME_REQUIRED = "B1023;A valid SSH login username is required."
 }
 
 /** ResponseCode 的錯誤碼部分，例如 "B1011" */
