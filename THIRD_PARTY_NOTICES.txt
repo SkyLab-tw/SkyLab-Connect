@@ -16,11 +16,18 @@ Application runtime
   vue-i18n                         MIT              https://github.com/intlify/vue-i18n
   vue-router                       MIT              https://github.com/vuejs/router
 
-Bundled installer
+Bundled networking components
   WireGuard for Windows             MIT      https://git.zx2c4.com/wireguard-windows/
   The unmodified, Authenticode-signed MSI is shipped in the wireguard folder
   with its own THIRD_PARTY_NOTICES.txt. Other applications may share this
   installation; uninstalling SkyLab Connect does not remove WireGuard.
+
+  WireGuard for macOS               MIT / GPL-2.0
+    wireguard-go                    MIT      https://git.zx2c4.com/wireguard-go/
+    wireguard-tools (wg)            GPL-2.0  https://git.zx2c4.com/wireguard-tools/
+  Universal (x86_64 + arm64) builds of wireguard-go and wg are shipped in the
+  wireguard folder with their own THIRD_PARTY_NOTICES.txt. They run as
+  standalone executables to configure the local utun tunnel interface.
 
 The About page shows the exact dependency versions included in this build.
 Complete client dependency records: package-lock.json and THIRD_PARTY_NOTICES.md

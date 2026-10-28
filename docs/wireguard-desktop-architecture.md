@@ -67,6 +67,8 @@ The current Windows build uses the tunnel service of the official WireGuard for 
 
 WireGuard is a shared system networking component, so uninstalling SkyLab Connect does not remove WireGuard, to avoid breaking tunnels used by other applications. The third-party license notices ship alongside in the app resources at `wireguard/THIRD_PARTY_NOTICES.txt`.
 
+The macOS build does not depend on the official WireGuard app; it ships universal `wireguard-go` and `wg` binaries. On the first connection the app runs the bundled `skylab-wg-helper.sh install` with administrator authorization, which copies the helper and both binaries into the root-owned `/Library/Application Support/SkyLabConnect/wireguard/` and writes `/etc/sudoers.d/skylab-connect`. That rule only lets the helper's `check`, `status`, `handshake`, `down` and `up` subcommands run through passwordless `sudo -n`; `install` refuses to run through sudo, so a standard user cannot replace files that root executes. When the helper changes (compared by SHA-256), the app asks for authorization again. The tunnel uses a utun interface and only routes the AllowedIPs networks, never the default route.
+
 The Client never sends its private key to the Backend, and it deletes the temporary plaintext configuration file immediately after generating the tunnel configuration.
 
 ## Verification

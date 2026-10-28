@@ -35,7 +35,7 @@ const replacement = "1e801048-422e-4761-ae26-f2fb0ddd5849";
 function setup() {
   const state = {
     url: "https://school.example.org",
-    resource: { vmid: 212, request_id: first, can_control: true },
+    resource: { vmid: 212, type: "qemu", request_id: first, can_control: true },
     status: 200,
     paths: []
   };
@@ -49,11 +49,11 @@ function setup() {
 
 test("new allocations reusing the same IP and VMID have different host identities", async () => {
   const { state, service } = setup();
-  const old = await service.getSshHostAlias(212);
+  const old = (await service.getSshTarget(212)).hostKeyAlias;
   assert.match(old, /^skylab-[a-f0-9]{64}$/);
-  assert.equal(await service.getSshHostAlias(212), old);
+  assert.equal((await service.getSshTarget(212)).hostKeyAlias, old);
   state.resource.request_id = replacement;
-  assert.notEqual(await service.getSshHostAlias(212), old);
+  assert.notEqual((await service.getSshTarget(212)).hostKeyAlias, old);
   assert.deepEqual(state.paths[0], {
     method: "GET",
     path: "/api/v1/resources/212",
@@ -63,32 +63,41 @@ test("new allocations reusing the same IP and VMID have different host identitie
 
 test("identity stays stable across address changes and differs between servers", async () => {
   const { state, service } = setup();
-  const original = await service.getSshHostAlias(212);
+  const original = (await service.getSshTarget(212)).hostKeyAlias;
   state.resource.ip_address = "192.168.60.110";
   state.resource.name = "renamed";
   state.url += "/";
-  assert.equal(await service.getSshHostAlias(212), original);
+  assert.equal((await service.getSshTarget(212)).hostKeyAlias, original);
   state.url = "https://other.example.org";
-  assert.notEqual(await service.getSshHostAlias(212), original);
+  assert.notEqual((await service.getSshTarget(212)).hostKeyAlias, original);
 });
 
 test("legacy resources retain address-based verification instead of a random identity", async () => {
   const { state, service } = setup();
   state.resource.request_id = null;
-  assert.equal(await service.getSshHostAlias(212), undefined);
+  assert.deepEqual(await service.getSshTarget(212), { resourceType: "qemu" });
 });
 
 test("invalid IDs, failed authorization and mismatched resources cannot yield an identity", async () => {
   const { state, service } = setup();
   for (const id of [0, -1, 1.5, NaN])
-    await assert.rejects(service.getSshHostAlias(id));
+    await assert.rejects(service.getSshTarget(id));
   assert.equal(state.paths.length, 0);
   state.status = 403;
-  await assert.rejects(service.getSshHostAlias(212));
+  await assert.rejects(service.getSshTarget(212));
   state.status = 200;
   state.resource.vmid = 213;
-  await assert.rejects(service.getSshHostAlias(212));
+  await assert.rejects(service.getSshTarget(212));
   state.resource.vmid = 212;
   state.resource.can_control = false;
-  await assert.rejects(service.getSshHostAlias(212));
+  await assert.rejects(service.getSshTarget(212));
+});
+
+test("the resource type comes from the API response, not the renderer", async () => {
+  const { state, service } = setup();
+  assert.equal((await service.getSshTarget(212)).resourceType, "qemu");
+  state.resource.type = "lxc";
+  assert.equal((await service.getSshTarget(212)).resourceType, "lxc");
+  delete state.resource.type;
+  assert.equal((await service.getSshTarget(212)).resourceType, "");
 });

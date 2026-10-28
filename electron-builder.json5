@@ -48,5 +48,40 @@
   },
   portable: {
     artifactName: "SkyLab-Connect-Portable.exe"
+  },
+  mac: {
+    // electron-builder 會從 512x512 PNG 產生 icns
+    icon: "./public/logo/pixel-octo/512x512.png",
+    category: "public.app-category.developer-tools",
+    darkModeSupport: true,
+    hardenedRuntime: true,
+    gatekeeperAssess: false,
+    // UpdateService 依這個檔名挑 macOS 安裝檔
+    artifactName: "SkyLab-Connect-mac-${arch}.${ext}",
+    extraResources: [
+      {
+        from: "vendor/wireguard-mac",
+        to: "wireguard",
+        filter: [
+          "wireguard-go",
+          "wg",
+          "skylab-wg-helper.sh",
+          "THIRD_PARTY_NOTICES.txt"
+        ]
+      },
+      {
+        from: "THIRD_PARTY_NOTICES.txt",
+        to: "THIRD_PARTY_NOTICES.txt"
+      }
+    ],
+    target: [
+      {
+        target: "dmg",
+        arch: ["universal"]
+      }
+    ]
+  },
+  dmg: {
+    sign: false
   }
 }

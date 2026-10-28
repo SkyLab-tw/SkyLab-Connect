@@ -16,7 +16,10 @@ const props = defineProps<{
   busy: boolean;
 }>();
 const emit = defineEmits<{
-  ssh: [target: { vmid: number; host: string; port: number }];
+  ssh: [
+    target: { vmid: number; host: string; port: number },
+    resource: SkyLabResource
+  ];
   rdp: [target: { vmid: number; host: string; port: number }];
 }>();
 const { t } = useI18n();
@@ -75,7 +78,7 @@ const connect = (resource: SkyLabResource, target: SkyLabTunnelInfo) => {
     host: String(target.host),
     port: Number(target.port)
   };
-  if (isSsh(target)) emit("ssh", destination);
+  if (isSsh(target)) emit("ssh", destination, resource);
   else emit("rdp", destination);
 };
 const showDetails = (resource: SkyLabResource) => {

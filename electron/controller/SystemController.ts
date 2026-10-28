@@ -6,6 +6,7 @@ import SettingsService from "../service/SettingsService";
 import SystemService from "../service/SystemService";
 import SkyLabService from "../service/SkyLabService";
 import PathUtils from "../utils/PathUtils";
+import SshLoginUtils from "../utils/SshLoginUtils";
 import ResponseUtils from "../utils/ResponseUtils";
 import BaseController from "./BaseController";
 
@@ -107,8 +108,12 @@ class SystemController extends BaseController {
     }
     try {
       const skyLabService: SkyLabService = BeanFactory.getBean("SkyLabService");
-      const alias = await skyLabService.getSshHostAlias(vmid);
-      await this._systemService.openSsh(port, "root", host, alias);
+      const { hostKeyAlias, resourceType } =
+        await skyLabService.getSshTarget(vmid);
+      // 機器類型以後端回應為準：容器固定 root，VM 用畫面上輸入的帳號
+      const user = SshLoginUtils.loginUser(resourceType, req.args?.username);
+      if (!user) throw new BusinessError(ResponseCode.SSH_USERNAME_REQUIRED);
+      await this._systemService.openSsh(port, user, host, hostKeyAlias);
       req.event.reply(req.channel, ResponseUtils.success());
     } catch (err) {
       Logger.error("SystemController.openSsh", err as Error);

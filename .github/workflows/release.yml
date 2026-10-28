@@ -1,8 +1,9 @@
 name: Release
 
-# 推送版本 tag（例如 v0.2.0-beta.19）時重跑全部檢查，建置未簽章的安裝版與免安裝版，
-# 連同原始碼 ZIP 和 SHA256SUMS.txt 直接發佈成最新版。檔名要跟舊版一致：
-# 更新器只認 SkyLab-Connect-Setup.exe，平台的下載連結也指向它。
+# 推送版本 tag（例如 v0.2.0-beta.19）時重跑全部檢查，建置未簽章的安裝版、免安裝版
+# 與 macOS universal DMG，連同原始碼 ZIP 和 SHA256SUMS.txt 直接發佈成最新版。
+# 檔名要跟舊版一致：更新器在 Windows 只認 SkyLab-Connect-Setup.exe、在 macOS 只認
+# SkyLab-Connect-mac-universal.dmg，平台的下載連結也指向它們。
 on:
   push:
     tags: ["v*"]
@@ -15,8 +16,38 @@ permissions:
   contents: read
 
 jobs:
+  macos:
+    name: macOS build
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Electron service regression tests
+        run: npm test
+
+      - name: Build unsigned universal DMG
+        run: npm run build:electron:mac:unsigned
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: release/*/SkyLab-Connect-mac-universal.dmg
+          if-no-files-found: error
+          retention-days: 1
+
   release:
     name: Windows release
+    needs: macos
     runs-on: windows-latest
     timeout-minutes: 45
     permissions:
@@ -80,16 +111,22 @@ jobs:
       - name: Build unsigned installer and portable
         run: npm run build:electron:win:unsigned
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg
+          path: release/macos
+
       - name: Package source, checksums and release notes
         run: |
           assets=release/publish
           source_zip="SkyLab-Connect-Source-$TAG.zip"
           mkdir -p "$assets"
           cp "release/$VERSION/SkyLab-Connect-Setup.exe" "release/$VERSION/SkyLab-Connect-Portable.exe" "$assets/"
-          printf 'Version: %s\nSource commit: %s\nBuild: npm ci; npm run build:electron:win:unsigned\n' \
+          cp "release/macos/$VERSION/SkyLab-Connect-mac-universal.dmg" "$assets/"
+          printf 'Version: %s\nSource commit: %s\nBuild: npm ci; npm run build:electron:win:unsigned; npm run build:electron:mac:unsigned\n' \
             "$TAG" "$GITHUB_SHA" > release/BUILD_INFO.txt
           git archive --format=zip --add-file=release/BUILD_INFO.txt -o "$assets/$source_zip" "$GITHUB_SHA"
-          (cd "$assets" && sha256sum -b SkyLab-Connect-Setup.exe SkyLab-Connect-Portable.exe "$source_zip" > SHA256SUMS.txt)
+          (cd "$assets" && sha256sum -b SkyLab-Connect-Setup.exe SkyLab-Connect-Portable.exe SkyLab-Connect-mac-universal.dmg "$source_zip" > SHA256SUMS.txt)
           {
             sed "s/{source_commit}/$GITHUB_SHA/g" "$NOTES"
             printf '\n\nSHA-256\n'
@@ -105,5 +142,6 @@ jobs:
             --notes-file release/release-notes.md \
             release/publish/SkyLab-Connect-Setup.exe \
             release/publish/SkyLab-Connect-Portable.exe \
+            release/publish/SkyLab-Connect-mac-universal.dmg \
             "release/publish/SkyLab-Connect-Source-$TAG.zip" \
             release/publish/SHA256SUMS.txt

@@ -74,7 +74,12 @@ class SkyLabApp {
 
     this._win = new BrowserWindow({
       title: `${app.getName()} v${app.getVersion()}`,
-      icon: join(process.env.VITE_PUBLIC, "logo/pixel-octo/icon.ico"),
+      icon: join(
+        process.env.VITE_PUBLIC,
+        process.platform === "win32"
+          ? "logo/pixel-octo/icon.ico"
+          : "logo/pixel-octo/512x512.png"
+      ),
       width: 960,
       height: 640,
       minWidth: 900,
@@ -119,7 +124,16 @@ class SkyLabApp {
       event.preventDefault();
     });
 
-    Menu.setApplicationMenu(null);
+    // macOS 需要應用程式選單，否則複製、貼上與關閉視窗等快捷鍵都會失效
+    Menu.setApplicationMenu(
+      process.platform === "darwin"
+        ? Menu.buildFromTemplate([
+            { role: "appMenu" },
+            { role: "editMenu" },
+            { role: "windowMenu" }
+          ])
+        : null
+    );
 
     this._win.on("minimize", () => {
       Logger.info("SkyLabApp.window", "Window minimized to taskbar");
@@ -216,9 +230,19 @@ class SkyLabApp {
     });
 
     app.on("activate", () => {
+      if (this._win) {
+        if (this._win.isMinimized()) this._win.restore();
+        this._win.show();
+        this._win.focus();
+        return;
+      }
       const wins = BrowserWindow.getAllWindows();
-      if (wins.length) wins[0].focus();
-      else this.initializeWindow();
+      if (wins.length) {
+        wins[0].show();
+        wins[0].focus();
+      } else {
+        void this.initializeWindow();
+      }
     });
 
     app.on("before-quit", event => {

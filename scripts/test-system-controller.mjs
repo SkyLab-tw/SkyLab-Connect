@@ -55,14 +55,18 @@ function request(args) {
   };
 }
 
-test("SSH uses the API identity and ignores a renderer-supplied alias", async () => {
-  const alias = "skylab-" + "a".repeat(64);
+const alias = "skylab-" + "a".repeat(64);
+function sshService(resourceType, hostKeyAlias = alias) {
   BeanFactory.setBean("SkyLabService", {
-    getSshHostAlias: async vmid => {
+    getSshTarget: async vmid => {
       assert.equal(vmid, 212);
-      return alias;
+      return hostKeyAlias ? { hostKeyAlias, resourceType } : { resourceType };
     }
   });
+}
+
+test("SSH uses the API identity and ignores a renderer-supplied alias", async () => {
+  sshService("lxc");
   const req = request({
     vmid: 212,
     host: "192.168.60.109",
@@ -74,13 +78,77 @@ test("SSH uses the API identity and ignores a renderer-supplied alias", async ()
   assert.equal(req.replies[0].bizCode, "A1000");
 });
 
+test("containers always log in as root, whatever username the renderer sends", async () => {
+  sshService("lxc");
+  const req = request({
+    vmid: 212,
+    host: "192.168.60.109",
+    port: 22,
+    username: "student"
+  });
+  await new SystemController().openSsh(req);
+  assert.deepEqual(calls, [[22, "root", "192.168.60.109", alias]]);
+});
+
+test("VMs log in with the username typed in the dialog", async () => {
+  sshService("qemu", null);
+  const req = request({
+    vmid: 212,
+    host: "192.168.60.109",
+    port: 2222,
+    username: "  gpu_user  "
+  });
+  await new SystemController().openSsh(req);
+  assert.deepEqual(calls, [[2222, "gpu_user", "192.168.60.109", undefined]]);
+  assert.equal(req.replies[0].bizCode, "A1000");
+});
+
+test("VMs without a valid username stop before the terminal opens", async () => {
+  sshService("qemu");
+  for (const username of [
+    undefined,
+    "",
+    "   ",
+    "root; rm -rf ~",
+    "a b",
+    "$(id)",
+    "-oProxyCommand=x",
+    "x".repeat(33),
+    42
+  ]) {
+    const req = request({
+      vmid: 212,
+      host: "192.168.60.109",
+      port: 22,
+      username
+    });
+    await new SystemController().openSsh(req);
+    assert.equal(req.replies[0].bizCode, "B1023", String(username));
+  }
+  assert.equal(calls.length, 0);
+});
+
+test("a resource the API does not mark as a container is treated as a VM", async () => {
+  // 渲染程序以為是容器而沒問帳號：主程序依後端回的類型擋下，不會退回 root
+  sshService("");
+  const req = request({ vmid: 212, host: "192.168.60.109", port: 22 });
+  await new SystemController().openSsh(req);
+  assert.equal(calls.length, 0);
+  assert.equal(req.replies[0].bizCode, "B1023");
+});
+
 test("denied resource lookup stops SSH before the terminal opens", async () => {
   BeanFactory.setBean("SkyLabService", {
-    getSshHostAlias: async () => {
+    getSshTarget: async () => {
       throw new BusinessError(ResponseCode.NOT_LOGGED_IN);
     }
   });
-  const req = request({ vmid: 212, host: "192.168.60.109", port: 22 });
+  const req = request({
+    vmid: 212,
+    host: "192.168.60.109",
+    port: 22,
+    username: "student"
+  });
   await new SystemController().openSsh(req);
   assert.equal(calls.length, 0);
   assert.equal(req.replies[0].bizCode, "B1001");

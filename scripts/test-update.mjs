@@ -67,19 +67,22 @@ const {
 
 const payload = Buffer.from("verified installer test payload");
 const digest = `sha256:${createHash("sha256").update(payload).digest("hex")}`;
+const INSTALLER_NAMES = [
+  "SkyLab-Connect-Setup.exe",
+  "SkyLab-Connect-mac-universal.dmg"
+];
+const PLATFORM_INSTALLER =
+  process.platform === "darwin" ? INSTALLER_NAMES[1] : INSTALLER_NAMES[0];
 const release = (version, overrides = {}) => ({
   tag_name: `v${version}`,
   draft: false,
-  assets: [
-    {
-      name: "SkyLab-Connect-Setup.exe",
-      browser_download_url:
-        "https://github.com/SkyLab-tw/SkyLab-Connect/releases/download/test/SkyLab-Connect-Setup.exe",
-      digest,
-      size: payload.length,
-      state: "uploaded"
-    }
-  ],
+  assets: INSTALLER_NAMES.map(name => ({
+    name,
+    browser_download_url: `https://github.com/SkyLab-tw/SkyLab-Connect/releases/download/test/${name}`,
+    digest,
+    size: payload.length,
+    state: "uploaded"
+  })),
   ...overrides
 });
 
@@ -90,6 +93,18 @@ test("published prereleases are ordered numerically and incomplete releases are 
     release("0.2.0-beta.10", { draft: true }),
     release("0.2.0-beta.9", { assets: [] }),
     release("0.2.0-beta.7")
+  ]);
+  assert.equal(result.tag_name, "v0.2.0-beta.8");
+});
+
+test("releases without this platform's installer are ignored", () => {
+  const otherPlatformOnly = release("0.2.0-beta.10");
+  otherPlatformOnly.assets = otherPlatformOnly.assets.filter(
+    asset => asset.name !== PLATFORM_INSTALLER
+  );
+  const result = selectNewestInstallableRelease([
+    otherPlatformOnly,
+    release("0.2.0-beta.8")
   ]);
   assert.equal(result.tag_name, "v0.2.0-beta.8");
 });
@@ -105,6 +120,7 @@ test("GitHub redirect is followed, verified download is opened and progress is r
   await service.install(progress => stages.push(progress.stage));
   const path = globalThis.updateTest.opened.pop();
   try {
+    assert.ok(path.endsWith(PLATFORM_INSTALLER));
     assert.deepEqual(await fs.readFile(path), payload);
     assert.equal(globalThis.updateTest.followed, 1);
     assert.ok(stages.includes("downloading"));

@@ -33,3 +33,6 @@ pnpm-lock.yaml
 *.pfx
 release-publish-state*.json
 __pycache__/
+
+# macOS WireGuard build output (prepare-wireguard-mac.sh)
+vendor/wireguard-mac/wireguard-go

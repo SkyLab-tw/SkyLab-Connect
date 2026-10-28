@@ -104,6 +104,16 @@
     failure: "登入失敗：{error}"
   },
   home: {
+    sshLogin: {
+      title: "SSH 登入帳號",
+      description:
+        "請輸入這台虛擬機的登入帳號（申請機器時設定的使用者名稱），按下連線後在終端機輸入密碼。",
+      label: "登入帳號",
+      placeholder: "例如 student",
+      invalid:
+        "帳號只能使用英文字母、數字、底線與連字號，開頭須為字母或底線，最多 32 個字元。",
+      confirm: "連線"
+    },
     rdpHelp: {
       title: "無法使用 RDP 遠端桌面",
       linux:
@@ -275,6 +285,9 @@
     B1018: "無法開啟，請再試一次。@:errors.support",
     B1019: "主機拒絕了 RDP 連線，可能尚未啟用遠端桌面服務。",
     B1020: "連不到主機的 RDP 連接埠。請先確認主機已開機，且安全連線正常。",
-    B1021: "還沒設定學校平台網址，請先輸入學校 SkyLab 平台的網址。"
+    B1021: "還沒設定學校平台網址，請先輸入學校 SkyLab 平台的網址。",
+    B1022:
+      "找不到 RDP 遠端桌面軟體。請先到 Mac App Store 免費安裝 Microsoft「Windows App」（原名 Microsoft Remote Desktop）。",
+    B1023: "請輸入正確的 SSH 登入帳號後再連線。"
   }
 };
