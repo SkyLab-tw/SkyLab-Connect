@@ -67,6 +67,8 @@ desktop routes, connection targets, Gateway ACLs, and SNAT installation.
 
 WireGuard 是共用的系統網路元件，移除 SkyLab Connect 時不會連帶移除 WireGuard，以免中斷其他應用程式的 tunnel。第三方授權聲明會一起放在 App resources 的 `wireguard/THIRD_PARTY_NOTICES.txt`。
 
+macOS 版本不依賴官方 WireGuard App，而是內附 universal 的 `wireguard-go` 與 `wg`。第一次連線時 App 以系統管理員授權執行打包內的 `skylab-wg-helper.sh install`，把 helper 與兩個執行檔複製到 `/Library/Application Support/SkyLabConnect/wireguard/`（root 擁有），並建立 `/etc/sudoers.d/skylab-connect`，只允許以 `sudo -n` 免密碼執行 helper 的 `check`、`status`、`handshake`、`down` 與 `up`；`install` 不能經由 sudo 執行，避免一般使用者替換 root 會執行的檔案。helper 內容變更時（以 SHA-256 比對）會重新要求授權安裝。tunnel 使用 utun 介面，路由只加入 AllowedIPs 中的網段，不接管預設路由。
+
 Client 不會把私鑰傳給 Backend，產生 tunnel 設定後也會立即刪除暫存明文設定檔。
 
 ## 驗證

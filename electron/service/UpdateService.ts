@@ -6,7 +6,11 @@ import { join } from "node:path";
 
 const RELEASES_API =
   "https://api.github.com/repos/SkyLab-tw/SkyLab-Connect/releases?per_page=30";
-const SETUP_ASSET_NAME = "SkyLab-Connect-Setup.exe";
+// macOS 只發 universal dmg（electron-builder.json5 的 mac.target）
+const SETUP_ASSET_NAME =
+  process.platform === "darwin"
+    ? "SkyLab-Connect-mac-universal.dmg"
+    : "SkyLab-Connect-Setup.exe";
 const MAX_INSTALLER_SIZE = 512 * 1024 * 1024;
 const DOWNLOAD_HOSTS = new Set([
   "github.com",

@@ -4,7 +4,13 @@ import { build } from "esbuild";
 import { createServer } from "node:net";
 import { once } from "node:events";
 
-globalThis.__systemTest = { calls: [], opened: [], automatic: true, exitCode: 0 };
+globalThis.__systemTest = {
+  calls: [],
+  opened: [],
+  automatic: true,
+  exitCode: 0,
+  rdpClient: "Windows App"
+};
 const bundle = await build({
   entryPoints: ["electron/service/SystemService.ts"],
   bundle: true,
@@ -15,16 +21,25 @@ const bundle = await build({
     {
       name: "terminal-runtime",
       setup(builder) {
-        builder.onResolve({ filter: /^(child_process|electron)$/ }, args => ({
-          path: args.path,
-          namespace: "fake"
-        }));
+        builder.onResolve(
+          { filter: /^(child_process|electron|fs)$/ },
+          args => ({
+            path: args.path,
+            namespace: "fake"
+          })
+        );
         builder.onLoad({ filter: /.*/, namespace: "fake" }, ({ path }) => ({
           contents:
-            path === "electron"
-              ? `export const app = {};
+            // 不讓本機實際安裝的 RDP App 影響 macOS 的測試結果
+            path === "fs"
+              ? `export default { existsSync: () => false };`
+              : path === "electron"
+                ? `export const app = {
+           getApplicationNameForProtocol: () => globalThis.__systemTest.rdpClient,
+           getPath: () => "/nonexistent-home"
+         };
          export const shell = { openExternal: async url => { globalThis.__systemTest.opened.push(url); } };`
-              : `import {EventEmitter} from 'node:events';
+                : `import {EventEmitter} from 'node:events';
          export const spawn = (command, args, options) => {
            const child = new EventEmitter(); child.unref = () => {};
            globalThis.__systemTest.calls.push({command, args, options, child});
@@ -41,7 +56,13 @@ const { default: SystemService } = await import(
 );
 let service;
 beforeEach(() => {
-  globalThis.__systemTest = { calls: [], opened: [], automatic: true, exitCode: 0 };
+  globalThis.__systemTest = {
+    calls: [],
+    opened: [],
+    automatic: true,
+    exitCode: 0,
+    rdpClient: "Windows App"
+  };
   service = new SystemService();
 });
 
@@ -215,6 +236,38 @@ test(
   }
 );
 
+test(
+  "macOS asks for an RDP client before probing the endpoint",
+  { skip: process.platform !== "darwin" },
+  async () => {
+    globalThis.__systemTest.rdpClient = "";
+    await assert.rejects(
+      service.openRdp(3389, "10.10.0.15"),
+      error => error.bizCode === "B1022"
+    );
+    assert.equal(globalThis.__systemTest.opened.length, 0);
+  }
+);
+
+test(
+  "macOS opens a reachable RDP endpoint through the rdp:// handler",
+  { skip: process.platform !== "darwin" },
+  async () => {
+    const server = createServer(socket => socket.destroy());
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const port = server.address().port;
+    try {
+      await service.openRdp(port);
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+    assert.deepEqual(globalThis.__systemTest.opened, [
+      `rdp://full%20address=s:127.0.0.1:${port}`
+    ]);
+  }
+);
+
 test("invalid RDP destinations cannot reach the network or launcher", async () => {
   for (const args of [[0], [65536], [3389, "127.0.0.1 & whoami"]]) {
     await assert.rejects(service.openRdp(...args), /Invalid RDP target/);
@@ -230,7 +283,10 @@ test("GitHub links open even before the school platform URL is set", async () =>
 });
 
 test("only the configured school platform is allowed besides GitHub", async () => {
-  await assert.rejects(service.openUrl("https://skylab-tw.com/"), /not allowed/);
+  await assert.rejects(
+    service.openUrl("https://skylab-tw.com/"),
+    /not allowed/
+  );
   await assert.rejects(
     service.openUrl("https://skylab-tw.com/", "https://ntub.skylab-tw.com"),
     /not allowed/

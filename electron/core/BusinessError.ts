@@ -22,7 +22,8 @@ enum ResponseCode {
   OPEN_FAILED = "B1018;Could not open the requested item.",
   RDP_REFUSED = "B1019;The machine refused the RDP connection.",
   RDP_UNREACHABLE = "B1020;The RDP endpoint could not be reached.",
-  BACKEND_NOT_CONFIGURED = "B1021;The school platform URL is not set."
+  BACKEND_NOT_CONFIGURED = "B1021;The school platform URL is not set.",
+  RDP_CLIENT_MISSING = "B1022;No RDP client is installed."
 }
 
 /** ResponseCode 的錯誤碼部分，例如 "B1011" */

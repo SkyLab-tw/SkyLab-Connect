@@ -1,17 +1,20 @@
 # SkyLab Connect
 
-SkyLab Connect 的獨立桌面客戶端原始碼與 Windows 發行版本。
+SkyLab Connect 的獨立桌面客戶端原始碼與 Windows／macOS 發行版本。
 透過 SkyLab 網頁登入，建立 WireGuard 安全通道，並開啟課程機器的 RDP／SSH 連線。
 
 - [下載 Windows 安裝程式](https://github.com/SkyLab-tw/SkyLab-Connect/releases/latest/download/SkyLab-Connect-Setup.exe)
 - [下載 Windows Portable](https://github.com/SkyLab-tw/SkyLab-Connect/releases/latest/download/SkyLab-Connect-Portable.exe)
+- [下載 macOS 版（Intel 與 Apple Silicon 通用 DMG）](https://github.com/SkyLab-tw/SkyLab-Connect/releases/latest/download/SkyLab-Connect-mac-universal.dmg)
 - [所有版本與各版原始碼附件](https://github.com/SkyLab-tw/SkyLab-Connect/releases)
 
 Windows x64 發行版本包含經 Microsoft 簽章的官方 WireGuard MSI。現有測試版的 SkyLab Connect 本身尚未簽章，Windows 可能顯示 SmartScreen 提示。
 
+macOS 版內含 universal 的 `wireguard-go` 與 `wg`，第一次連線時會要求一次系統管理員授權來安裝 WireGuard helper。目前 DMG 只有 ad-hoc 簽章、未經 Apple 公證，第一次開啟需在 Finder 對 App 按右鍵選「打開」。macOS 開啟 RDP 需要先從 Mac App Store 安裝 Microsoft「Windows App」。
+
 ## 開發與建置
 
-需要 Windows x64、Node.js 22.12 以上與 npm。請在此 repo 根目錄執行：
+需要 Windows x64 或 macOS、Node.js 22.12 以上與 npm。請在此 repo 根目錄執行：
 
 ```powershell
 npm ci
@@ -38,13 +41,20 @@ npm run build:electron:win:unsigned
 npm run build:electron:win
 ```
 
+```bash
+# macOS 測試用未簽章 universal DMG（需在 macOS 執行）
+npm run build:electron:mac:unsigned
+```
+
+`vendor/wireguard-mac/` 已附上建好的 WireGuard 執行檔；要重新編譯請執行 `bash scripts/prepare-wireguard-mac.sh --rebuild`（需要 Xcode Command Line Tools 與 Go）。
+
 安裝檔輸出至 `release/<version>/`。請勿提交 node_modules、建置產物、憑證、token 或發行暫存狀態。
 
 ## 發佈新版本
 
 1. 更新 `package.json` 與 `package-lock.json` 的版號，新增 `docs/releases/release-notes-beta<N>.md`（正式版用 `release-notes-v<版號>.md`），經 PR 合併到 `main`。
 2. 在合併後的 commit 建立同名 tag，推送到 `SkyLab-tw/SkyLab-Connect`，例如 `git tag v0.2.0-beta.19` 後 `git push <remote> v0.2.0-beta.19`。
-3. [Release workflow](.github/workflows/release.yml) 會重跑全部檢查，建置未簽章的安裝版與 Portable，連同原始碼 ZIP 與 `SHA256SUMS.txt` 直接發佈成最新版。已安裝的 SkyLab Connect 會在一小時內提示更新。
+3. [Release workflow](.github/workflows/release.yml) 會重跑全部檢查，建置未簽章的安裝版、Portable 與 macOS DMG，連同原始碼 ZIP 與 `SHA256SUMS.txt` 直接發佈成最新版。已安裝的 SkyLab Connect 會在一小時內提示更新。
 
 tag 與版號不一致、缺少發佈說明，或同版 Release 已存在時，workflow 會停止，不會覆蓋既有版本。
 

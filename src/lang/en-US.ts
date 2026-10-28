@@ -294,6 +294,8 @@
     B1020:
       "Couldn't reach the machine's RDP port. First check that the machine is running and the secure connection is working.",
     B1021:
-      "The school platform URL isn't set yet. Enter the address of your school's SkyLab platform first."
+      "The school platform URL isn't set yet. Enter the address of your school's SkyLab platform first.",
+    B1022:
+      'No remote desktop app found. Install Microsoft\'s free "Windows App" (formerly Microsoft Remote Desktop) from the Mac App Store first.'
   }
 };

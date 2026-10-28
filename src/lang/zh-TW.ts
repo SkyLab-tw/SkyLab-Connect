@@ -275,6 +275,8 @@
     B1018: "無法開啟，請再試一次。@:errors.support",
     B1019: "主機拒絕了 RDP 連線，可能尚未啟用遠端桌面服務。",
     B1020: "連不到主機的 RDP 連接埠。請先確認主機已開機，且安全連線正常。",
-    B1021: "還沒設定學校平台網址，請先輸入學校 SkyLab 平台的網址。"
+    B1021: "還沒設定學校平台網址，請先輸入學校 SkyLab 平台的網址。",
+    B1022:
+      "找不到 RDP 遠端桌面軟體。請先到 Mac App Store 免費安裝 Microsoft「Windows App」（原名 Microsoft Remote Desktop）。"
   }
 };

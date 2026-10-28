@@ -1,6 +1,8 @@
 ﻿import { spawn } from "child_process";
 import { app, shell } from "electron";
+import fs from "fs";
 import { createConnection, isIP } from "net";
+import path from "path";
 import { BusinessError, ResponseCode } from "../core/BusinessError";
 
 class SystemService {
@@ -84,11 +86,14 @@ class SystemService {
         script
       ]);
     } else if (process.platform === "darwin") {
-      const script = `tell application "Terminal" to do script "${sshCmd}"`;
-      spawn("osascript", ["-e", script], {
-        detached: true,
-        stdio: "ignore"
-      }).unref();
+      const escapedCmd = sshCmd.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      const script = [
+        'tell application "Terminal"',
+        "activate",
+        `do script "${escapedCmd}"`,
+        "end tell"
+      ].join("\n");
+      await this._spawnDetached("osascript", ["-e", script]);
     } else {
       spawn("x-terminal-emulator", ["-e", "sh", "-c", sshCmd], {
         detached: true,
@@ -111,6 +116,27 @@ class SystemService {
     });
   }
 
+  private _hasMacRdpClient(): boolean {
+    try {
+      if (
+        typeof app.getApplicationNameForProtocol === "function" &&
+        app.getApplicationNameForProtocol("rdp://")
+      ) {
+        return true;
+      }
+    } catch {
+      // Fall through to application bundle check.
+    }
+    const home = app.getPath("home");
+    const candidates = [
+      "/Applications/Windows App.app",
+      "/Applications/Microsoft Remote Desktop.app",
+      path.join(home, "Applications", "Windows App.app"),
+      path.join(home, "Applications", "Microsoft Remote Desktop.app")
+    ];
+    return candidates.some(candidate => fs.existsSync(candidate));
+  }
+
   async openRdp(port: number, host = "127.0.0.1"): Promise<void> {
     if (
       !Number.isInteger(port) ||
@@ -127,6 +153,9 @@ class SystemService {
       // and would prevent mstsc from opening at all.
       await this._spawnDetached("mstsc.exe", [`/v:${target}`]);
       return;
+    }
+    if (process.platform === "darwin" && !this._hasMacRdpClient()) {
+      throw new BusinessError(ResponseCode.RDP_CLIENT_MISSING);
     }
     await this._checkRdpAvailability(host, port);
     if (process.platform === "darwin") {
